@@ -7,6 +7,7 @@ Directory.CreateDirectory(outputRoot);
 var mode = args.Length > 0 ? args[0].ToLowerInvariant() : "single";
 var generator = new SingleTileGenerator();
 var painter = new WorldPainter(generator);
+var panEngine = new CameraPanEngine(generator);
 
 switch (mode)
 {
@@ -74,6 +75,32 @@ switch (mode)
             Console.WriteLine($"Sample position: ({sampleX:0.00}, {sampleY:0.00})");
             Console.WriteLine($"Dominant biome: {blended.DominantBiome}");
             Console.WriteLine($"Prompt: {prompt}");
+            break;
+        }
+
+    case "pan":
+        {
+            var startX = GetFloat(args, "--start-x", 0f);
+            var startY = GetFloat(args, "--start-y", 0f);
+            var endX = GetFloat(args, "--end-x", 5f);
+            var endY = GetFloat(args, "--end-y", 0f);
+            var viewportWidth = GetInt(args, "--viewport-width", 3);
+            var viewportHeight = GetInt(args, "--viewport-height", 3);
+            var steps = GetInt(args, "--steps", 10);
+            var seed = GetInt(args, "--seed", 1337);
+
+            var generated = panEngine.PanAndGenerate(
+                startX,
+                startY,
+                endX,
+                endY,
+                viewportWidth,
+                viewportHeight,
+                steps,
+                seed,
+                outputRoot);
+
+            Console.WriteLine($"Camera pan generated {generated} visible-priority tiles.");
             break;
         }
 

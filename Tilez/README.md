@@ -34,6 +34,12 @@ dotnet run -- prefetch --viewport-min-x 0 --viewport-max-x 2 --viewport-min-y 0 
 dotnet run -- sample --x 0.5 --y 0.5 --seed 1337
 ```
 
+- Simulate camera panning with visibility-priority generation:
+
+```bash
+dotnet run -- pan --start-x 0 --start-y 0 --end-x 5 --end-y 0 --viewport-width 3 --viewport-height 3 --steps 10 --seed 1337
+```
+
 Authoring file format:
 
 ```json
