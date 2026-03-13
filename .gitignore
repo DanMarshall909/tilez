@@ -9,3 +9,24 @@
 
 # Generated tile artifacts
 Tilez/generated/
+generated/
+
+# Godot cache and generated files
+TilezViewer/project/.godot/
+TilezViewer/project/*.import
+TilezViewer/project/exported.tres
+TilezViewer/project/.godot/
+TilezViewer/project/uid_cache.bin
+TilezViewer/project/debug.log
+
+# Godot user-generated content
+TilezViewer/project/generated/
+TilezViewer/project/user://
+*.log
+
+# IDE/Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
