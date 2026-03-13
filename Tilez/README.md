@@ -52,6 +52,21 @@ dotnet run -- zoom-sample --x 0.5 --y 0.5 --zoom 2.0 --seed 1337
 dotnet run -- render --x 0 --y 0 --zoom 3.0 --seed 1337
 ```
 
+- Generate with local AI image backend (OpenAI-compatible API):
+
+```bash
+dotnet run -- render --image-backend openai --ai-base-url http://localhost:1234 --ai-model flux --x 0 --y 0 --zoom 3.0 --seed 1337
+```
+
+Environment variable alternative:
+
+```bash
+set TILEZ_IMAGE_BACKEND=openai
+set TILEZ_AI_BASE_URL=http://localhost:1234
+set TILEZ_AI_MODEL=flux
+dotnet run -- render --x 0 --y 0 --zoom 3.0 --seed 1337
+```
+
 Authoring file format:
 
 ```json
@@ -71,4 +86,10 @@ Authoring file format:
 ]
 ```
 
-Generated image and metadata files are written to `Tilez/generated/`.
+Generated PNG images and metadata files are written to `Tilez/generated/`.
+
+Quick view on Windows:
+
+```powershell
+start .\generated\images
+```

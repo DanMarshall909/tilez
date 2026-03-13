@@ -1,10 +1,14 @@
-using System.Globalization;
-using System.Text;
-
 namespace Tilez;
 
 public sealed class SingleTileGenerator
 {
+    private readonly ITileImageGenerator _imageGenerator;
+
+    public SingleTileGenerator(ITileImageGenerator? imageGenerator = null)
+    {
+        _imageGenerator = imageGenerator ?? new ProceduralTileImageGenerator();
+    }
+
     private static readonly string[] Biomes =
     [
         "mechanical garden",
@@ -72,7 +76,7 @@ public sealed class SingleTileGenerator
             paletteWeights);
 
         var tileSummary = BuildSummary(features);
-        var imagePath = GenerateImage(coordinate, seed, paletteWeights, outputRoot, 64, false, "base");
+        var imagePath = GenerateImage(coordinate, seed, features, outputRoot, 64, false, "base");
 
         return new WorldTile(coordinate, seed, features, tileSummary, imagePath);
     }
@@ -84,7 +88,7 @@ public sealed class SingleTileGenerator
         string outputRoot)
     {
         var tileSummary = BuildSummary(features);
-        var imagePath = GenerateImage(coordinate, seed, features.PaletteWeights, outputRoot, 64, false, "base");
+        var imagePath = GenerateImage(coordinate, seed, features, outputRoot, 64, false, "base");
         return new WorldTile(coordinate, seed, features, tileSummary, imagePath);
     }
 
@@ -93,11 +97,39 @@ public sealed class SingleTileGenerator
         return GenerateImage(
             tile.Coordinate,
             tile.Seed,
-            tile.Features.PaletteWeights,
+            tile.Features,
             outputRoot,
             size,
             highDetail,
             tag);
+    }
+
+    private string GenerateImage(
+        TileCoordinate coordinate,
+        int seed,
+        PromptFeatures features,
+        string outputRoot,
+        int size,
+        bool highDetail,
+        string tag)
+    {
+        var imagesDir = Path.Combine(outputRoot, "images");
+        Directory.CreateDirectory(imagesDir);
+
+        var fileName = $"tile_{coordinate.X}_{coordinate.Y}_{seed}_{tag}_{size}.png";
+        var filePath = Path.Combine(imagesDir, fileName);
+
+        var request = new TileImageRequest(
+            coordinate,
+            seed,
+            features,
+            size,
+            highDetail,
+            tag,
+            filePath);
+
+        _imageGenerator.Generate(request);
+        return filePath;
     }
 
     private static int CombineSeed(int seed, TileCoordinate coordinate)
@@ -121,96 +153,18 @@ public sealed class SingleTileGenerator
             return values;
         }
 
-        var normalized = values.ToDictionary(
-            pair => pair.Key,
-            pair => pair.Value / sum);
-
-        return normalized;
+        return values.ToDictionary(pair => pair.Key, pair => pair.Value / sum);
     }
 
     private static string BuildSummary(PromptFeatures features)
     {
         var motif = TopKey(features.MotifWeights);
         var material = TopKey(features.MaterialWeights);
-
         return $"{features.Biome}, {features.Mood} tone with {material} and {motif}";
     }
 
     private static string TopKey(IReadOnlyDictionary<string, float> values)
     {
         return values.OrderByDescending(pair => pair.Value).First().Key;
-    }
-
-    private static string GenerateImage(
-        TileCoordinate coordinate,
-        int seed,
-        IReadOnlyDictionary<string, float> paletteWeights,
-        string outputRoot,
-        int size,
-        bool highDetail,
-        string tag)
-    {
-        var imagesDir = Path.Combine(outputRoot, "images");
-        Directory.CreateDirectory(imagesDir);
-
-        var fileName = $"tile_{coordinate.X}_{coordinate.Y}_{seed}_{tag}_{size}.ppm";
-        var filePath = Path.Combine(imagesDir, fileName);
-
-        var color = PaletteToRgb(paletteWeights);
-        var ppm = BuildPpm(size, size, color, highDetail ? 0.45f : 0.2f);
-        File.WriteAllText(filePath, ppm, Encoding.ASCII);
-
-        return filePath;
-    }
-
-    private static (int R, int G, int B) PaletteToRgb(IReadOnlyDictionary<string, float> paletteWeights)
-    {
-        var amber = paletteWeights.GetValueOrDefault("amber");
-        var verdigris = paletteWeights.GetValueOrDefault("verdigris");
-        var violet = paletteWeights.GetValueOrDefault("violet");
-        var teal = paletteWeights.GetValueOrDefault("teal");
-        var rust = paletteWeights.GetValueOrDefault("rust");
-        var ivory = paletteWeights.GetValueOrDefault("ivory");
-
-        var r = Clamp01(amber * 0.9f + rust * 0.8f + ivory * 0.7f + violet * 0.3f);
-        var g = Clamp01(verdigris * 0.9f + teal * 0.7f + ivory * 0.6f);
-        var b = Clamp01(violet * 0.9f + teal * 0.6f + ivory * 0.5f);
-
-        return ((int)(r * 255), (int)(g * 255), (int)(b * 255));
-    }
-
-    private static float Clamp01(float value)
-    {
-        return Math.Clamp(value, 0f, 1f);
-    }
-
-    private static string BuildPpm(int width, int height, (int R, int G, int B) baseColor, float frequency)
-    {
-        var sb = new StringBuilder();
-        sb.AppendLine("P3");
-        sb.AppendLine($"{width} {height}");
-        sb.AppendLine("255");
-
-        for (var y = 0; y < height; y++)
-        {
-            for (var x = 0; x < width; x++)
-            {
-                var wave = (float)(Math.Sin((x + y) * frequency) * 0.15 + 0.85);
-                var r = (int)(baseColor.R * wave);
-                var g = (int)(baseColor.G * wave);
-                var b = (int)(baseColor.B * wave);
-
-                sb.Append(r.ToString(CultureInfo.InvariantCulture));
-                sb.Append(' ');
-                sb.Append(g.ToString(CultureInfo.InvariantCulture));
-                sb.Append(' ');
-                sb.Append(b.ToString(CultureInfo.InvariantCulture));
-                sb.Append(' ');
-            }
-
-            sb.AppendLine();
-        }
-
-        return sb.ToString();
     }
 }

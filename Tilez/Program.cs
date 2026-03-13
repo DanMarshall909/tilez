@@ -5,7 +5,8 @@ var outputRoot = Path.Combine(Directory.GetCurrentDirectory(), "generated");
 Directory.CreateDirectory(outputRoot);
 
 var mode = args.Length > 0 ? args[0].ToLowerInvariant() : "single";
-var generator = new SingleTileGenerator();
+var imageGenerator = BuildImageGenerator(args);
+var generator = new SingleTileGenerator(imageGenerator);
 var painter = new WorldPainter(generator);
 var panEngine = new CameraPanEngine(generator);
 var promptSampler = new DistanceWeightedPromptFieldSampler();
@@ -134,6 +135,7 @@ switch (mode)
             var tile = generator.Generate(new TileCoordinate(x, y), seed, outputRoot);
             var artifacts = scalingPipeline.RenderForDisplay(tile, zoom, outputRoot);
 
+            Console.WriteLine($"Image backend: {imageGenerator.BackendName}");
             Console.WriteLine($"Render backend: {artifacts.UpscalerBackend}");
             Console.WriteLine($"Low-res: {artifacts.LowResImagePath}");
             Console.WriteLine($"Upscaled: {artifacts.UpscaledImagePath}");
@@ -182,4 +184,29 @@ static string? GetString(string[] args, string key)
     }
 
     return null;
+}
+
+static ITileImageGenerator BuildImageGenerator(string[] args)
+{
+    var backend = GetString(args, "--image-backend")?.ToLowerInvariant()
+        ?? Environment.GetEnvironmentVariable("TILEZ_IMAGE_BACKEND")?.ToLowerInvariant()
+        ?? "procedural";
+
+    if (backend is "openai" or "ai")
+    {
+        var baseUrl = GetString(args, "--ai-base-url")
+            ?? Environment.GetEnvironmentVariable("TILEZ_AI_BASE_URL")
+            ?? "http://localhost:1234";
+
+        var model = GetString(args, "--ai-model")
+            ?? Environment.GetEnvironmentVariable("TILEZ_AI_MODEL")
+            ?? "flux";
+
+        var apiKey = GetString(args, "--ai-api-key")
+            ?? Environment.GetEnvironmentVariable("TILEZ_AI_API_KEY");
+
+        return new OpenAiCompatibleTileImageGenerator(new OpenAiImageOptions(baseUrl, model, apiKey));
+    }
+
+    return new ProceduralTileImageGenerator();
 }
