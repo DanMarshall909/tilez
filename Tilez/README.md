@@ -46,6 +46,12 @@ dotnet run -- pan --start-x 0 --start-y 0 --end-x 5 --end-y 0 --viewport-width 3
 dotnet run -- zoom-sample --x 0.5 --y 0.5 --zoom 2.0 --seed 1337
 ```
 
+- Run display scaling pipeline (low-res -> upscaled -> optional high-detail):
+
+```bash
+dotnet run -- render --x 0 --y 0 --zoom 3.0 --seed 1337
+```
+
 Authoring file format:
 
 ```json

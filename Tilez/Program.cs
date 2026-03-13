@@ -10,6 +10,7 @@ var painter = new WorldPainter(generator);
 var panEngine = new CameraPanEngine(generator);
 var promptSampler = new DistanceWeightedPromptFieldSampler();
 var zoomSampler = new ZoomPromptSamplingService(painter, promptSampler);
+var scalingPipeline = new DisplayScalingPipeline(generator, new CpuNearestNeighborUpscaler());
 
 switch (mode)
 {
@@ -120,6 +121,24 @@ switch (mode)
                 outputRoot);
 
             Console.WriteLine($"Camera pan generated {generated} visible-priority tiles.");
+            break;
+        }
+
+    case "render":
+        {
+            var x = GetInt(args, "--x", 0);
+            var y = GetInt(args, "--y", 0);
+            var zoom = GetFloat(args, "--zoom", 1.0f);
+            var seed = GetInt(args, "--seed", 1337);
+
+            var tile = generator.Generate(new TileCoordinate(x, y), seed, outputRoot);
+            var artifacts = scalingPipeline.RenderForDisplay(tile, zoom, outputRoot);
+
+            Console.WriteLine($"Render backend: {artifacts.UpscalerBackend}");
+            Console.WriteLine($"Low-res: {artifacts.LowResImagePath}");
+            Console.WriteLine($"Upscaled: {artifacts.UpscaledImagePath}");
+            Console.WriteLine($"High-detail: {artifacts.HighDetailImagePath ?? "not requested"}");
+            Console.WriteLine($"Metadata: {artifacts.MetadataPath}");
             break;
         }
 

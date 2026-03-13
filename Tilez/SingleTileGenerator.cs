@@ -72,7 +72,7 @@ public sealed class SingleTileGenerator
             paletteWeights);
 
         var tileSummary = BuildSummary(features);
-        var imagePath = GenerateImage(coordinate, seed, paletteWeights, outputRoot);
+        var imagePath = GenerateImage(coordinate, seed, paletteWeights, outputRoot, 64, false, "base");
 
         return new WorldTile(coordinate, seed, features, tileSummary, imagePath);
     }
@@ -84,8 +84,20 @@ public sealed class SingleTileGenerator
         string outputRoot)
     {
         var tileSummary = BuildSummary(features);
-        var imagePath = GenerateImage(coordinate, seed, features.PaletteWeights, outputRoot);
+        var imagePath = GenerateImage(coordinate, seed, features.PaletteWeights, outputRoot, 64, false, "base");
         return new WorldTile(coordinate, seed, features, tileSummary, imagePath);
+    }
+
+    public string RenderVariant(WorldTile tile, string outputRoot, int size, bool highDetail, string tag)
+    {
+        return GenerateImage(
+            tile.Coordinate,
+            tile.Seed,
+            tile.Features.PaletteWeights,
+            outputRoot,
+            size,
+            highDetail,
+            tag);
     }
 
     private static int CombineSeed(int seed, TileCoordinate coordinate)
@@ -133,16 +145,19 @@ public sealed class SingleTileGenerator
         TileCoordinate coordinate,
         int seed,
         IReadOnlyDictionary<string, float> paletteWeights,
-        string outputRoot)
+        string outputRoot,
+        int size,
+        bool highDetail,
+        string tag)
     {
         var imagesDir = Path.Combine(outputRoot, "images");
         Directory.CreateDirectory(imagesDir);
 
-        var fileName = $"tile_{coordinate.X}_{coordinate.Y}_{seed}.ppm";
+        var fileName = $"tile_{coordinate.X}_{coordinate.Y}_{seed}_{tag}_{size}.ppm";
         var filePath = Path.Combine(imagesDir, fileName);
 
         var color = PaletteToRgb(paletteWeights);
-        var ppm = BuildPpm(64, 64, color);
+        var ppm = BuildPpm(size, size, color, highDetail ? 0.45f : 0.2f);
         File.WriteAllText(filePath, ppm, Encoding.ASCII);
 
         return filePath;
@@ -169,7 +184,7 @@ public sealed class SingleTileGenerator
         return Math.Clamp(value, 0f, 1f);
     }
 
-    private static string BuildPpm(int width, int height, (int R, int G, int B) baseColor)
+    private static string BuildPpm(int width, int height, (int R, int G, int B) baseColor, float frequency)
     {
         var sb = new StringBuilder();
         sb.AppendLine("P3");
@@ -180,7 +195,7 @@ public sealed class SingleTileGenerator
         {
             for (var x = 0; x < width; x++)
             {
-                var wave = (float)(Math.Sin((x + y) * 0.2) * 0.15 + 0.85);
+                var wave = (float)(Math.Sin((x + y) * frequency) * 0.15 + 0.85);
                 var r = (int)(baseColor.R * wave);
                 var g = (int)(baseColor.G * wave);
                 var b = (int)(baseColor.B * wave);
