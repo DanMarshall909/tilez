@@ -2,3 +2,10 @@
 # Dolt database files (added by bd init)
 .dolt/
 *.db
+
+# .NET build output
+**/bin/
+**/obj/
+
+# Generated tile artifacts
+Tilez/generated/
