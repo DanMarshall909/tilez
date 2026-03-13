@@ -83,6 +83,8 @@ public sealed class ZoomPromptSamplingService
         var organicity = 0f;
         var harmony = 0f;
         var conflict = 0f;
+        var seamStrength = 0f;
+        var seamBehaviorScores = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var sample in samples)
         {
@@ -94,11 +96,16 @@ public sealed class ZoomPromptSamplingService
             organicity += sample.Organicity;
             harmony += sample.Harmony;
             conflict += sample.Conflict;
+            seamStrength += sample.SeamInteractionStrength;
+            seamBehaviorScores[sample.SeamBehavior] = ReadOrZero(seamBehaviorScores, sample.SeamBehavior) + 1f;
         }
 
         var dominantBiome = biomeScores.Count == 0
             ? "neutral"
             : biomeScores.OrderByDescending(pair => pair.Value).First().Key;
+        var seamBehavior = seamBehaviorScores.Count == 0
+            ? "none"
+            : seamBehaviorScores.OrderByDescending(pair => pair.Value).First().Key;
 
         return new BlendedPromptFeatures(
             dominantBiome,
@@ -106,6 +113,8 @@ public sealed class ZoomPromptSamplingService
             organicity / count,
             harmony / count,
             conflict / count,
+            seamBehavior,
+            seamStrength / count,
             Normalize(motif),
             Normalize(materials),
             Normalize(palettes));

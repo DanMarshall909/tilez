@@ -75,6 +75,7 @@ switch (mode)
 
             Console.WriteLine($"Sample position: ({sampleX:0.00}, {sampleY:0.00})");
             Console.WriteLine($"Dominant biome: {blended.DominantBiome}");
+            Console.WriteLine($"Seam: {blended.SeamBehavior} ({blended.SeamInteractionStrength:0.00})");
             Console.WriteLine($"Prompt: {prompt}");
             break;
         }
@@ -91,6 +92,7 @@ switch (mode)
 
             Console.WriteLine($"Zoom level: {zoom:0.00}");
             Console.WriteLine($"Dominant biome: {blended.DominantBiome}");
+            Console.WriteLine($"Seam: {blended.SeamBehavior} ({blended.SeamInteractionStrength:0.00})");
             Console.WriteLine($"Prompt: {prompt}");
             break;
         }

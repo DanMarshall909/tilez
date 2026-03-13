@@ -8,6 +8,8 @@ public sealed record BlendedPromptFeatures(
     float Organicity,
     float Harmony,
     float Conflict,
+    string SeamBehavior,
+    float SeamInteractionStrength,
     IReadOnlyDictionary<string, float> MotifWeights,
     IReadOnlyDictionary<string, float> MaterialWeights,
     IReadOnlyDictionary<string, float> PaletteWeights);
@@ -77,6 +79,14 @@ public sealed class DistanceWeightedPromptFieldSampler : IPromptFieldSampler
         }
 
         var dominantBiome = biomeScores.OrderByDescending(pair => pair.Value).First().Key;
+        var seamInteractionStrength = CalculateSeamStrength(tileWeights, worldPosition);
+        var seamBehavior = DetermineSeamBehavior(mechanicality, organicity, harmony, conflict, seamInteractionStrength);
+
+        if (seamInteractionStrength > 0.5f)
+        {
+            AmplifyInteractions(motifWeights, seamInteractionStrength);
+            AmplifyInteractions(materialWeights, seamInteractionStrength);
+        }
 
         return new BlendedPromptFeatures(
             dominantBiome,
@@ -84,6 +94,8 @@ public sealed class DistanceWeightedPromptFieldSampler : IPromptFieldSampler
             organicity,
             harmony,
             conflict,
+            seamBehavior,
+            seamInteractionStrength,
             Normalize(motifWeights),
             Normalize(materialWeights),
             Normalize(paletteWeights));
@@ -160,6 +172,71 @@ public sealed class DistanceWeightedPromptFieldSampler : IPromptFieldSampler
         return features.PaletteWeights.GetValueOrDefault("rust")
             + features.PaletteWeights.GetValueOrDefault("violet");
     }
+
+    private static float CalculateSeamStrength(IReadOnlyList<(WorldTile Tile, float Weight)> tileWeights, Vector2 samplePoint)
+    {
+        if (tileWeights.Count < 2)
+        {
+            return 0f;
+        }
+
+        var ranked = tileWeights.OrderByDescending(pair => pair.Weight).Take(2).ToList();
+        var top = ranked[0].Weight;
+        var second = ranked[1].Weight;
+        var balance = second / Math.Max(top, 0.0001f);
+
+        var nearestGridX = MathF.Round(samplePoint.X);
+        var nearestGridY = MathF.Round(samplePoint.Y);
+        var edgeDistanceX = MathF.Abs(samplePoint.X - nearestGridX);
+        var edgeDistanceY = MathF.Abs(samplePoint.Y - nearestGridY);
+        var edgeProximity = 1f - Math.Clamp(Math.Min(edgeDistanceX, edgeDistanceY) / 0.5f, 0f, 1f);
+
+        return Math.Clamp(balance * edgeProximity, 0f, 1f);
+    }
+
+    private static string DetermineSeamBehavior(
+        float mechanicality,
+        float organicity,
+        float harmony,
+        float conflict,
+        float seamStrength)
+    {
+        if (seamStrength < 0.2f)
+        {
+            return "none";
+        }
+
+        if (mechanicality > 0.9f && organicity > 0.9f)
+        {
+            return "fusion";
+        }
+
+        if (conflict > harmony)
+        {
+            return "tension";
+        }
+
+        if (harmony > 0.8f)
+        {
+            return "trade";
+        }
+
+        return "transformation";
+    }
+
+    private static void AmplifyInteractions(IDictionary<string, float> values, float seamStrength)
+    {
+        if (values.Count == 0)
+        {
+            return;
+        }
+
+        var ranked = values.OrderByDescending(pair => pair.Value).Take(3).Select(pair => pair.Key).ToList();
+        foreach (var key in ranked)
+        {
+            values[key] *= 1f + (0.25f * seamStrength);
+        }
+    }
 }
 
 public static class PromptComposer
@@ -169,7 +246,7 @@ public static class PromptComposer
         var motif = TopKey(blended.MotifWeights);
         var material = TopKey(blended.MaterialWeights);
         var palette = TopKey(blended.PaletteWeights);
-        return $"{blended.DominantBiome} with {material} {motif}, {palette} palette";
+        return $"{blended.DominantBiome} with {material} {motif}, {palette} palette, seam {blended.SeamBehavior}";
     }
 
     private static string TopKey(IReadOnlyDictionary<string, float> values)
