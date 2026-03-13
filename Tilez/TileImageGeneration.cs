@@ -76,11 +76,16 @@ public sealed class OpenAiCompatibleTileImageGenerator : ITileImageGenerator
 {
     private readonly OpenAiImageOptions _options;
     private readonly ITileImageGenerator _fallback;
+    private readonly bool _allowFallback;
 
-    public OpenAiCompatibleTileImageGenerator(OpenAiImageOptions options, ITileImageGenerator? fallback = null)
+    public OpenAiCompatibleTileImageGenerator(
+        OpenAiImageOptions options,
+        ITileImageGenerator? fallback = null,
+        bool allowFallback = true)
     {
         _options = options;
         _fallback = fallback ?? new ProceduralTileImageGenerator();
+        _allowFallback = allowFallback;
     }
 
     public string BackendName => $"openai-compatible ({_options.BaseUrl})";
@@ -91,7 +96,7 @@ public sealed class OpenAiCompatibleTileImageGenerator : ITileImageGenerator
         {
             GenerateWithApi(request);
         }
-        catch
+        catch when (_allowFallback)
         {
             _fallback.Generate(request);
         }
