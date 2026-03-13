@@ -1,0 +1,37 @@
+{
+  "Coordinate": {
+    "X": -7,
+    "Y": 3
+  },
+  "Seed": 1578140739,
+  "Features": {
+    "Biome": "storm marsh",
+    "Mood": "curious",
+    "MotifWeights": {
+      "pistons": 0.10476263,
+      "roots": 0.18026653,
+      "spores": 0.2251823,
+      "runes": 0.21349473,
+      "clockwork": 0.0758861,
+      "vines": 0.20040771
+    },
+    "MaterialWeights": {
+      "brass": 0.117989026,
+      "stone": 0.15075178,
+      "mycelium": 0.21525797,
+      "glass": 0.38105175,
+      "steam": 0.10538385,
+      "copper": 0.029565575
+    },
+    "PaletteWeights": {
+      "amber": 0.250645,
+      "verdigris": 0.29456607,
+      "violet": 0.05903515,
+      "teal": 0.061265945,
+      "rust": 0.2248891,
+      "ivory": 0.10959876
+    }
+  },
+  "TileSummary": "storm marsh, curious tone with glass and spores",
+  "ImagePath": "C:\\code\\tilez\\TilezViewer\\project\\generated\\images\\tile_-7_3_1578140739_base_64.png"
+}

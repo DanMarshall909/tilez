@@ -1,0 +1,37 @@
+{
+  "Coordinate": {
+    "X": -7,
+    "Y": -4
+  },
+  "Seed": 1059831965,
+  "Features": {
+    "Biome": "sunken archive",
+    "Mood": "ominous",
+    "MotifWeights": {
+      "pistons": 0.024589371,
+      "roots": 0.23187836,
+      "spores": 0.030639322,
+      "runes": 0.30638093,
+      "clockwork": 0.01243611,
+      "vines": 0.39407593
+    },
+    "MaterialWeights": {
+      "brass": 0.1800599,
+      "stone": 0.043155916,
+      "mycelium": 0.023254687,
+      "glass": 0.27084842,
+      "steam": 0.33817375,
+      "copper": 0.14450729
+    },
+    "PaletteWeights": {
+      "amber": 0.047085144,
+      "verdigris": 0.1901331,
+      "violet": 0.2848124,
+      "teal": 0.1072779,
+      "rust": 0.3611265,
+      "ivory": 0.009564925
+    }
+  },
+  "TileSummary": "sunken archive, ominous tone with steam and vines",
+  "ImagePath": "C:\\code\\tilez\\TilezViewer\\project\\generated\\images\\tile_-7_-4_1059831965_base_64.png"
+}

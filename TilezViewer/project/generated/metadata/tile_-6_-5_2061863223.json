@@ -1,0 +1,37 @@
+{
+  "Coordinate": {
+    "X": -6,
+    "Y": -5
+  },
+  "Seed": 2061863223,
+  "Features": {
+    "Biome": "fungal bloom",
+    "Mood": "tranquil",
+    "MotifWeights": {
+      "pistons": 0.05440054,
+      "roots": 0.12854426,
+      "spores": 0.12806928,
+      "runes": 0.23376183,
+      "clockwork": 0.42836535,
+      "vines": 0.02685869
+    },
+    "MaterialWeights": {
+      "brass": 0.120156884,
+      "stone": 0.29241973,
+      "mycelium": 0.1998572,
+      "glass": 0.07628871,
+      "steam": 0.24285649,
+      "copper": 0.068421
+    },
+    "PaletteWeights": {
+      "amber": 0.036951322,
+      "verdigris": 0.05700705,
+      "violet": 0.28888232,
+      "teal": 0.3380771,
+      "rust": 0.25474212,
+      "ivory": 0.024340136
+    }
+  },
+  "TileSummary": "fungal bloom, tranquil tone with stone and clockwork",
+  "ImagePath": "C:\\code\\tilez\\TilezViewer\\project\\generated\\images\\tile_-6_-5_2061863223_base_64.png"
+}

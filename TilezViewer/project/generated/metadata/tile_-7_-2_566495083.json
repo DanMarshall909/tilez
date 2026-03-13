@@ -1,0 +1,37 @@
+{
+  "Coordinate": {
+    "X": -7,
+    "Y": -2
+  },
+  "Seed": 566495083,
+  "Features": {
+    "Biome": "glass desert",
+    "Mood": "hopeful",
+    "MotifWeights": {
+      "pistons": 0.10401556,
+      "roots": 0.09304291,
+      "spores": 0.28334612,
+      "runes": 0.23907374,
+      "clockwork": 0.1479738,
+      "vines": 0.13254784
+    },
+    "MaterialWeights": {
+      "brass": 0.2497301,
+      "stone": 0.14355218,
+      "mycelium": 0.06357978,
+      "glass": 0.22938532,
+      "steam": 0.0685073,
+      "copper": 0.24524531
+    },
+    "PaletteWeights": {
+      "amber": 0.287434,
+      "verdigris": 0.1973979,
+      "violet": 0.12555586,
+      "teal": 0.18409935,
+      "rust": 0.17148897,
+      "ivory": 0.0340239
+    }
+  },
+  "TileSummary": "glass desert, hopeful tone with brass and spores",
+  "ImagePath": "C:\\code\\tilez\\TilezViewer\\project\\generated\\images\\tile_-7_-2_566495083_base_64.png"
+}

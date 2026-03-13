@@ -1,0 +1,37 @@
+{
+  "Coordinate": {
+    "X": -7,
+    "Y": 2
+  },
+  "Seed": 993518021,
+  "Features": {
+    "Biome": "storm marsh",
+    "Mood": "hopeful",
+    "MotifWeights": {
+      "pistons": 0.07817361,
+      "roots": 0.13979188,
+      "spores": 0.1290857,
+      "runes": 0.2607611,
+      "clockwork": 0.23042299,
+      "vines": 0.16176474
+    },
+    "MaterialWeights": {
+      "brass": 0.21234289,
+      "stone": 0.11030758,
+      "mycelium": 0.18960647,
+      "glass": 0.30742332,
+      "steam": 0.055490978,
+      "copper": 0.12482878
+    },
+    "PaletteWeights": {
+      "amber": 0.12880982,
+      "verdigris": 0.22862852,
+      "violet": 0.2565061,
+      "teal": 0.23602545,
+      "rust": 0.030260338,
+      "ivory": 0.11976973
+    }
+  },
+  "TileSummary": "storm marsh, hopeful tone with glass and runes",
+  "ImagePath": "C:\\code\\tilez\\TilezViewer\\project\\generated\\images\\tile_-7_2_993518021_base_64.png"
+}
