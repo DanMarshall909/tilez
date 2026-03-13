@@ -1,4 +1,5 @@
 using Tilez;
+using System.Numerics;
 
 var outputRoot = Path.Combine(Directory.GetCurrentDirectory(), "generated");
 Directory.CreateDirectory(outputRoot);
@@ -59,6 +60,23 @@ switch (mode)
             break;
         }
 
+    case "sample":
+        {
+            var sampleX = GetFloat(args, "--x", 0.5f);
+            var sampleY = GetFloat(args, "--y", 0.5f);
+            var seed = GetInt(args, "--seed", 1337);
+
+            var nearbyTiles = painter.PaintRectangle(-1, 1, -1, 1, seed, outputRoot);
+            var sampler = new DistanceWeightedPromptFieldSampler();
+            var blended = sampler.SampleAt(new Vector2(sampleX, sampleY), nearbyTiles);
+            var prompt = PromptComposer.Compose(blended);
+
+            Console.WriteLine($"Sample position: ({sampleX:0.00}, {sampleY:0.00})");
+            Console.WriteLine($"Dominant biome: {blended.DominantBiome}");
+            Console.WriteLine($"Prompt: {prompt}");
+            break;
+        }
+
     default:
         {
             var x = GetInt(args, "--x", 0);
@@ -80,6 +98,12 @@ static int GetInt(string[] args, string key, int defaultValue)
 {
     var text = GetString(args, key);
     return int.TryParse(text, out var parsed) ? parsed : defaultValue;
+}
+
+static float GetFloat(string[] args, string key, float defaultValue)
+{
+    var text = GetString(args, key);
+    return float.TryParse(text, out var parsed) ? parsed : defaultValue;
 }
 
 static string? GetString(string[] args, string key)

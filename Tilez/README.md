@@ -28,6 +28,12 @@ dotnet run -- author --file authoring.json
 dotnet run -- prefetch --viewport-min-x 0 --viewport-max-x 2 --viewport-min-y 0 --viewport-max-y 2 --margin 1 --seed 1337
 ```
 
+- Sample location-sensitive prompt influence:
+
+```bash
+dotnet run -- sample --x 0.5 --y 0.5 --seed 1337
+```
+
 Authoring file format:
 
 ```json
