@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "server",
+  "dolt_database": "tilez",
+  "project_id": "f7f3c1f8-e3bb-41b8-a089-e0ab25d47421"
+}
