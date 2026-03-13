@@ -64,4 +64,27 @@ public sealed class WorldPainter
 
         return tiles;
     }
+
+    public IReadOnlyList<WorldTile> PaintViewportWithMargin(
+        int viewportMinX,
+        int viewportMaxX,
+        int viewportMinY,
+        int viewportMaxY,
+        int margin,
+        int seed,
+        string outputRoot)
+    {
+        if (margin < 0)
+        {
+            throw new ArgumentException("Margin must be non-negative.");
+        }
+
+        return PaintRectangle(
+            viewportMinX - margin,
+            viewportMaxX + margin,
+            viewportMinY - margin,
+            viewportMaxY + margin,
+            seed,
+            outputRoot);
+    }
 }

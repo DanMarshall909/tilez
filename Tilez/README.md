@@ -22,6 +22,12 @@ dotnet run -- paint --min-x 0 --max-x 2 --min-y 0 --max-y 2 --seed 1337
 dotnet run -- author --file authoring.json
 ```
 
+- Prefetch viewport + offscreen margin:
+
+```bash
+dotnet run -- prefetch --viewport-min-x 0 --viewport-max-x 2 --viewport-min-y 0 --viewport-max-y 2 --margin 1 --seed 1337
+```
+
 Authoring file format:
 
 ```json

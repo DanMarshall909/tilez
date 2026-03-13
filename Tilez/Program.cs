@@ -35,6 +35,30 @@ switch (mode)
             break;
         }
 
+    case "prefetch":
+        {
+            var viewportMinX = GetInt(args, "--viewport-min-x", 0);
+            var viewportMaxX = GetInt(args, "--viewport-max-x", 2);
+            var viewportMinY = GetInt(args, "--viewport-min-y", 0);
+            var viewportMaxY = GetInt(args, "--viewport-max-y", 2);
+            var margin = GetInt(args, "--margin", 1);
+            var seed = GetInt(args, "--seed", 1337);
+
+            var tiles = painter.PaintViewportWithMargin(
+                viewportMinX,
+                viewportMaxX,
+                viewportMinY,
+                viewportMaxY,
+                margin,
+                seed,
+                outputRoot);
+
+            Console.WriteLine(
+                $"Prefetched {tiles.Count} tiles for viewport " +
+                $"[{viewportMinX},{viewportMinY}] to [{viewportMaxX},{viewportMaxY}] with margin {margin}.");
+            break;
+        }
+
     default:
         {
             var x = GetInt(args, "--x", 0);
