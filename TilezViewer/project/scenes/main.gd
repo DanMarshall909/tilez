@@ -15,7 +15,7 @@ var pan_speed: float = 200.0
 
 # Tile generator settings
 var dotnet_project_path: String = "../../Tilez/Tilez.csproj"
-var generated_images_path: String = "C:\\code\\tilez\\generated\\images"  # Absolute path
+var generated_images_path: String = "C:\\code\\tilez\\Tilez\\generated\\images"  # Absolute path
 var base_url: String = "http://localhost:1234"
 var ai_model: String = "flux.1-schnell"  # Using schnell (faster) variant
 var use_ai: bool = true
@@ -30,7 +30,7 @@ var generating: bool = false
 var log_file: String = "user://"  # Godot user directory
 var debug_enabled: bool = true
 
-func log(msg: String) -> void:
+func debug_log(msg: String) -> void:
 	var timestamp = Time.get_ticks_msec()
 	var formatted = "[%d] %s" % [timestamp, msg]
 	print(formatted)
@@ -38,33 +38,33 @@ func log(msg: String) -> void:
 		print_debug(formatted)
 
 func _ready() -> void:
-	log("=== TILEZ VIEWER STARTING ===")
-	log("Godot version: %s" % Engine.get_version_info()["string"])
-	log("Working directory: %s" % ProjectSettings.globalize_path("res://"))
-	log("Generated images path: %s" % generated_images_path)
+	debug_log("=== TILEZ VIEWER STARTING ===")
+	debug_log("Godot version: %s" % Engine.get_version_info()["string"])
+	debug_log("Working directory: %s" % ProjectSettings.globalize_path("res://"))
+	debug_log("Generated images path: %s" % generated_images_path)
 	
 	camera = $Camera2D
 	label = $Label
 	
 	if camera == null:
-		log("ERROR: Camera2D not found!")
+		debug_log("ERROR: Camera2D not found!")
 		return
 	if label == null:
-		log("ERROR: Label not found!")
+		debug_log("ERROR: Label not found!")
 		return
 	
-	log("Camera and Label initialized successfully")
+	debug_log("Camera and Label initialized successfully")
 	
 	# Set up initial view
 	camera.zoom = Vector2(current_zoom, current_zoom)
 	camera.position = Vector2(0, 0)
 	
-	log("Camera positioned at (0,0) with zoom %.2f" % current_zoom)
+	debug_log("Camera positioned at (0,0) with zoom %.2f" % current_zoom)
 	
 	update_label("Initializing Tilez Viewer...\nLooking for pre-generated tiles...")
 	
 	# Generate initial 3x3 grid
-	log("Generating initial 3x3 tile grid around (0, 0)")
+	debug_log("Generating initial 3x3 tile grid around (0, 0)")
 	generate_surrounding_tiles(0, 0)
 	update_label("Ready. Use arrow keys to pan, +/- to zoom.\nGenerating tiles in background...")
 
@@ -124,33 +124,33 @@ func generate_tile(x: int, y: int) -> void:
 	var tile_coord = Vector2i(x, y)
 	var coord_str = str(tile_coord)
 	
-	log("generate_tile(%d, %d) called" % [x, y])
+	debug_log("generate_tile(%d, %d) called" % [x, y])
 	
 	# Check if already loaded
 	if tiles.has(coord_str):
-		log("  -> Already loaded in tiles dict")
+		debug_log("  -> Already loaded in tiles dict")
 		return
 	
 	# Try to load pre-generated tile
-	log("  -> Checking for pre-generated files...")
+	debug_log("  -> Checking for pre-generated files...")
 	var files = get_matching_files(generated_images_path, "tile_%d_%d" % [x, y])
-	log("  -> Found %d matching files" % files.size())
+	debug_log("  -> Found %d matching files" % files.size())
 	
 	if files.size() > 0:
 		# Found pre-generated tile, load it
-		log("  -> Loading pre-generated tile: %s" % files[0])
+		debug_log("  -> Loading pre-generated tile: %s" % files[0])
 		var texture = load_image_as_texture(files[0])
 		if texture:
-			log("  -> Texture loaded successfully")
+			debug_log("  -> Texture loaded successfully")
 			tiles[coord_str] = texture
 			display_tile(x, y, texture)
 			loaded_coords[coord_str] = true
 			return
 		else:
-			log("  -> ERROR: Failed to load texture")
+			debug_log("  -> ERROR: Failed to load texture")
 	
 	# No pre-generated tile found, generate one
-	log("  -> No pre-generated tile found, will generate with AI")
+	debug_log("  -> No pre-generated tile found, will generate with AI")
 	loaded_coords[coord_str] = true
 	if use_ai:
 		generate_tile_with_flux_async(x, y)
@@ -159,17 +159,14 @@ func generate_tile(x: int, y: int) -> void:
 
 func generate_tile_with_flux_async(x: int, y: int) -> void:
 	# Wrapper to handle async generation
-	log("generate_tile_with_flux_async(%d, %d) started" % [x, y])
-	var task = generate_tile_with_flux(x, y)
-	if task is Coroutine:
-		log("  -> Awaiting generation task...")
-		await task
-	log("  -> Task completed")
+	debug_log("generate_tile_with_flux_async(%d, %d) started" % [x, y])
+	await generate_tile_with_flux(x, y)
+	debug_log("  -> Task completed")
 
 func generate_tile_with_flux(x: int, y: int) -> void:
 	var seed = hash_coord(x, y)
 	
-	log("[FLUX GEN] Starting tile generation (%d, %d) seed=%d" % [x, y, seed])
+	debug_log("[FLUX GEN] Starting tile generation (%d, %d) seed=%d" % [x, y, seed])
 	update_label("Generating tile (%d, %d)...\nSeed: %d" % [x, y, seed])
 	
 	# Build full command line
@@ -183,68 +180,68 @@ func generate_tile_with_flux(x: int, y: int) -> void:
 		seed
 	]
 	
-	log("[FLUX GEN] Working dir: %s" % working_dir)
-	log("[FLUX GEN] Command: %s" % cmd_line)
+	debug_log("[FLUX GEN] Working dir: %s" % working_dir)
+	debug_log("[FLUX GEN] Command: %s" % cmd_line)
 	
 	# Check if working directory exists
 	var dir = DirAccess.open(working_dir)
 	if dir == null:
-		log("[FLUX GEN] ERROR: Working directory not found: %s" % working_dir)
+		debug_log("[FLUX GEN] ERROR: Working directory not found: %s" % working_dir)
 		update_label("ERROR: Working directory not found")
 		return
-	log("[FLUX GEN] Working directory verified")
+	debug_log("[FLUX GEN] Working directory verified")
 	
 	# Run the command
 	var output = []
-	log("[FLUX GEN] Executing command...")
+	debug_log("[FLUX GEN] Executing command...")
 	var start_time = Time.get_ticks_msec()
 	
-	var result = OS.execute("cmd.exe", ["/C", cmd_line], output, true, [], true, working_dir)
+	var result = OS.execute("cmd.exe", ["/C", cmd_line], output, true)
 	
 	var elapsed = Time.get_ticks_msec() - start_time
-	log("[FLUX GEN] Command finished in %d ms, exit code: %d" % [elapsed, result])
+	debug_log("[FLUX GEN] Command finished in %d ms, exit code: %d" % [elapsed, result])
 	
 	# Log output
 	if output.size() > 0:
 		var output_str = output[0] if output.size() > 0 else ""
-		log("[FLUX GEN] Output (first 500 chars): %s" % output_str.substr(0, 500))
+		debug_log("[FLUX GEN] Output (first 500 chars): %s" % output_str.substr(0, 500))
 	else:
-		log("[FLUX GEN] No output captured")
+		debug_log("[FLUX GEN] No output captured")
 	
 	# Wait for file system
-	log("[FLUX GEN] Waiting 1 second for file system sync...")
+	debug_log("[FLUX GEN] Waiting 1 second for file system sync...")
 	await get_tree().create_timer(1.0).timeout
 	
 	# Check for generated files
-	log("[FLUX GEN] Looking for generated files...")
+	debug_log("[FLUX GEN] Looking for generated files...")
 	var search_pattern = "tile_%d_%d" % [x, y]
-	log("[FLUX GEN] Search pattern: %s" % search_pattern)
+	debug_log("[FLUX GEN] Search pattern: %s" % search_pattern)
 	
 	var files = get_matching_files(generated_images_path, search_pattern)
-	log("[FLUX GEN] Found %d matching files" % files.size())
+	debug_log("[FLUX GEN] Found %d matching files" % files.size())
 	
 	for f in files:
-		log("[FLUX GEN] File: %s" % f)
+		debug_log("[FLUX GEN] File: %s" % f)
 	
 	if files.size() > 0:
-		log("[FLUX GEN] Loading first file: %s" % files[0])
+		debug_log("[FLUX GEN] Loading first file: %s" % files[0])
 		var texture = load_image_as_texture(files[0])
 		if texture:
-			log("[FLUX GEN] Texture loaded successfully")
+			debug_log("[FLUX GEN] Texture loaded successfully")
 			var coord_str = str(Vector2i(x, y))
 			tiles[coord_str] = texture
 			display_tile(x, y, texture)
 			update_label("Tile (%d, %d) loaded!\nPan: arrows, Zoom: +/-" % [x, y])
-			log("[FLUX GEN] Tile displayed successfully")
+			debug_log("[FLUX GEN] Tile displayed successfully")
 		else:
-			log("[FLUX GEN] ERROR: Failed to load texture from %s" % files[0])
+			debug_log("[FLUX GEN] ERROR: Failed to load texture from %s" % files[0])
 			update_label("ERROR: Failed to load texture")
 	else:
-		log("[FLUX GEN] ERROR: No generated files found")
-		log("[FLUX GEN] Checked directory: %s" % generated_images_path)
+		debug_log("[FLUX GEN] ERROR: No generated files found")
+		debug_log("[FLUX GEN] Checked directory: %s" % generated_images_path)
 		var dir_check = DirAccess.open(generated_images_path)
 		if dir_check:
-			log("[FLUX GEN] Directory exists and is readable")
+			debug_log("[FLUX GEN] Directory exists and is readable")
 			# List all PNG files in directory
 			dir_check.list_dir_begin()
 			var file_name = dir_check.get_next()
@@ -253,9 +250,9 @@ func generate_tile_with_flux(x: int, y: int) -> void:
 				if file_name.ends_with(".png"):
 					png_count += 1
 				file_name = dir_check.get_next()
-			log("[FLUX GEN] Total PNG files in directory: %d" % png_count)
+			debug_log("[FLUX GEN] Total PNG files in directory: %d" % png_count)
 		else:
-			log("[FLUX GEN] ERROR: Cannot open directory %s" % generated_images_path)
+			debug_log("[FLUX GEN] ERROR: Cannot open directory %s" % generated_images_path)
 		update_label("ERROR: Tile generation failed")
 
 func generate_tile_procedural(x: int, y: int) -> void:
@@ -287,32 +284,32 @@ func generate_surrounding_tiles(center_x: int, center_y: int) -> void:
 				loaded_coords[coord_str] = true
 
 func display_tile(x: int, y: int, texture: Texture2D) -> void:
-	log("[DISPLAY] Displaying tile (%d, %d)" % [x, y])
+	debug_log("[DISPLAY] Displaying tile (%d, %d)" % [x, y])
 	var sprite = Sprite2D.new()
 	sprite.texture = texture
 	sprite.position = Vector2(x * tile_size + tile_size / 2.0, y * tile_size + tile_size / 2.0)
 	sprite.centered = true
 	$TileContainer.add_child(sprite)
-	log("[DISPLAY] Sprite added to container at position %.1f, %.1f" % [sprite.position.x, sprite.position.y])
+	debug_log("[DISPLAY] Sprite added to container at position %.1f, %.1f" % [sprite.position.x, sprite.position.y])
 
 func load_image_as_texture(path: String) -> Texture2D:
-	log("[TEXTURE] Loading image: %s" % path)
+	debug_log("[TEXTURE] Loading image: %s" % path)
 	
 	# Check file exists
 	if not ResourceLoader.exists(path):
-		log("[TEXTURE] Path does not exist as resource: %s" % path)
+		debug_log("[TEXTURE] Path does not exist as resource: %s" % path)
 	
 	# Try loading PNG directly
 	var image = Image.new()
 	var error = image.load(path)
 	
 	if error == OK:
-		log("[TEXTURE] Image loaded successfully, size: %dx%d" % [image.get_width(), image.get_height()])
+		debug_log("[TEXTURE] Image loaded successfully, size: %dx%d" % [image.get_width(), image.get_height()])
 		var texture = ImageTexture.create_from_image(image)
-		log("[TEXTURE] Texture created successfully")
+		debug_log("[TEXTURE] Texture created successfully")
 		return texture
 	else:
-		log("[TEXTURE] ERROR loading image, error code: %d" % error)
+		debug_log("[TEXTURE] ERROR loading image, error code: %d" % error)
 		return null
 
 func get_matching_files(directory: String, pattern: String) -> PackedStringArray:
@@ -321,16 +318,16 @@ func get_matching_files(directory: String, pattern: String) -> PackedStringArray
 	# Use absolute path
 	var abs_dir = "C:\\code\\tilez\\generated\\images"
 	
-	log("[FILE SEARCH] Looking in: %s" % abs_dir)
-	log("[FILE SEARCH] Pattern: %s" % pattern)
+	debug_log("[FILE SEARCH] Looking in: %s" % abs_dir)
+	debug_log("[FILE SEARCH] Pattern: %s" % pattern)
 	
 	var dir = DirAccess.open(abs_dir)
 	
 	if dir == null:
-		log("[FILE SEARCH] ERROR: Could not open directory: %s" % abs_dir)
+		debug_log("[FILE SEARCH] ERROR: Could not open directory: %s" % abs_dir)
 		return result
 	
-	log("[FILE SEARCH] Directory opened successfully")
+	debug_log("[FILE SEARCH] Directory opened successfully")
 	
 	dir.list_dir_begin()
 	var file_name = dir.get_next()
@@ -339,21 +336,21 @@ func get_matching_files(directory: String, pattern: String) -> PackedStringArray
 	
 	while file_name != "":
 		total_files += 1
-		log("[FILE SEARCH] Checking: %s" % file_name)
+		debug_log("[FILE SEARCH] Checking: %s" % file_name)
 		
 		if file_name != "." and file_name != ".." and file_name.ends_with(".png"):
-			log("[FILE SEARCH]   - Is PNG")
+			debug_log("[FILE SEARCH]   - Is PNG")
 			if pattern in file_name:
 				var full_path = abs_dir.path_join(file_name)
 				result.append(full_path)
 				matching_files += 1
-				log("[FILE SEARCH]   - MATCH! Pattern '%s' found in '%s'" % [pattern, file_name])
+				debug_log("[FILE SEARCH]   - MATCH! Pattern '%s' found in '%s'" % [pattern, file_name])
 			else:
-				log("[FILE SEARCH]   - No match for pattern '%s'" % pattern)
+				debug_log("[FILE SEARCH]   - No match for pattern '%s'" % pattern)
 		
 		file_name = dir.get_next()
 	
-	log("[FILE SEARCH] Scanned %d files, found %d matches" % [total_files, matching_files])
+	debug_log("[FILE SEARCH] Scanned %d files, found %d matches" % [total_files, matching_files])
 	
 	return result
 
