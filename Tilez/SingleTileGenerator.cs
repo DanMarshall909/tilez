@@ -77,6 +77,17 @@ public sealed class SingleTileGenerator
         return new WorldTile(coordinate, seed, features, tileSummary, imagePath);
     }
 
+    public WorldTile GenerateFromFeatures(
+        TileCoordinate coordinate,
+        int seed,
+        PromptFeatures features,
+        string outputRoot)
+    {
+        var tileSummary = BuildSummary(features);
+        var imagePath = GenerateImage(coordinate, seed, features.PaletteWeights, outputRoot);
+        return new WorldTile(coordinate, seed, features, tileSummary, imagePath);
+    }
+
     private static int CombineSeed(int seed, TileCoordinate coordinate)
     {
         unchecked

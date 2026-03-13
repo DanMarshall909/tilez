@@ -1,0 +1,29 @@
+[
+  {
+    "x": 3,
+    "y": 1,
+    "seed": 2048,
+    "features": {
+      "biome": "mechanical garden",
+      "mood": "curious",
+      "motifWeights": {
+        "pistons": 0.55,
+        "roots": 0.45
+      },
+      "materialWeights": {
+        "brass": 0.7,
+        "steam": 0.3
+      },
+      "paletteWeights": {
+        "amber": 0.8,
+        "ivory": 0.2
+      }
+    }
+  },
+  {
+    "x": 4,
+    "y": 1,
+    "seed": 2048,
+    "features": null
+  }
+]

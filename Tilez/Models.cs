@@ -15,3 +15,9 @@ public sealed record WorldTile(
     PromptFeatures Features,
     string TileSummary,
     string ImagePath);
+
+public sealed record TileAuthoringRequest(
+    int X,
+    int Y,
+    int Seed,
+    PromptFeatures? Features);
