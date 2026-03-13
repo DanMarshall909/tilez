@@ -8,6 +8,8 @@ var mode = args.Length > 0 ? args[0].ToLowerInvariant() : "single";
 var generator = new SingleTileGenerator();
 var painter = new WorldPainter(generator);
 var panEngine = new CameraPanEngine(generator);
+var promptSampler = new DistanceWeightedPromptFieldSampler();
+var zoomSampler = new ZoomPromptSamplingService(painter, promptSampler);
 
 switch (mode)
 {
@@ -68,11 +70,26 @@ switch (mode)
             var seed = GetInt(args, "--seed", 1337);
 
             var nearbyTiles = painter.PaintRectangle(-1, 1, -1, 1, seed, outputRoot);
-            var sampler = new DistanceWeightedPromptFieldSampler();
-            var blended = sampler.SampleAt(new Vector2(sampleX, sampleY), nearbyTiles);
+            var blended = promptSampler.SampleAt(new Vector2(sampleX, sampleY), nearbyTiles);
             var prompt = PromptComposer.Compose(blended);
 
             Console.WriteLine($"Sample position: ({sampleX:0.00}, {sampleY:0.00})");
+            Console.WriteLine($"Dominant biome: {blended.DominantBiome}");
+            Console.WriteLine($"Prompt: {prompt}");
+            break;
+        }
+
+    case "zoom-sample":
+        {
+            var sampleX = GetFloat(args, "--x", 0.5f);
+            var sampleY = GetFloat(args, "--y", 0.5f);
+            var zoom = GetFloat(args, "--zoom", 1.0f);
+            var seed = GetInt(args, "--seed", 1337);
+
+            var blended = zoomSampler.SampleAtZoom(new Vector2(sampleX, sampleY), zoom, seed, outputRoot);
+            var prompt = PromptComposer.Compose(blended);
+
+            Console.WriteLine($"Zoom level: {zoom:0.00}");
             Console.WriteLine($"Dominant biome: {blended.DominantBiome}");
             Console.WriteLine($"Prompt: {prompt}");
             break;

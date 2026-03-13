@@ -40,6 +40,12 @@ dotnet run -- sample --x 0.5 --y 0.5 --seed 1337
 dotnet run -- pan --start-x 0 --start-y 0 --end-x 5 --end-y 0 --viewport-width 3 --viewport-height 3 --steps 10 --seed 1337
 ```
 
+- Sample prompt field at a zoom level (density changes with zoom):
+
+```bash
+dotnet run -- zoom-sample --x 0.5 --y 0.5 --zoom 2.0 --seed 1337
+```
+
 Authoring file format:
 
 ```json
