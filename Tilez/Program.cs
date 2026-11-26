@@ -2,7 +2,9 @@ using Tilez;
 using System.Numerics;
 using Serilog;
 
-var outputRoot = Path.Combine(Directory.GetCurrentDirectory(), "generated");
+var outputRoot = GetString(args, "--output-root")
+    ?? Path.Combine(Directory.GetCurrentDirectory(), "generated");
+outputRoot = Path.GetFullPath(outputRoot);
 Directory.CreateDirectory(outputRoot);
 
 var logger = LoggingSetup.ConfigureLogging(outputRoot);
