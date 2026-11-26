@@ -10,7 +10,7 @@ Directory.CreateDirectory(outputRoot);
 var logger = LoggingSetup.ConfigureLogging(outputRoot);
 logger.Information("Starting Tilez CLI");
 logger.Information("Output root: {OutputRoot}", outputRoot);
-logger.Information("Arguments: {Args}", string.Join(" ", args));
+logger.Information("Arguments: {Args}", string.Join(" ", RedactSecrets(args)));
 
 try
 {
@@ -252,6 +252,26 @@ static string? GetString(string[] args, string key)
     return null;
 }
 
+static string[] RedactSecrets(string[] args)
+{
+    var safe = (string[])args.Clone();
+    for (var index = 0; index < safe.Length; index++)
+    {
+        if (safe[index].Equals("--ai-api-key", StringComparison.OrdinalIgnoreCase)
+            || safe[index].Equals("--openrouter-api-key", StringComparison.OrdinalIgnoreCase))
+        {
+            if (index + 1 < safe.Length) safe[++index] = "[redacted]";
+        }
+        else if (safe[index].StartsWith("--ai-api-key=", StringComparison.OrdinalIgnoreCase)
+            || safe[index].StartsWith("--openrouter-api-key=", StringComparison.OrdinalIgnoreCase))
+        {
+            safe[index] = safe[index].Split('=')[0] + "=[redacted]";
+        }
+    }
+
+    return safe;
+}
+
 static ITileImageGenerator BuildImageGenerator(string[] args)
 {
     var backend = GetString(args, "--image-backend")?.ToLowerInvariant()
@@ -259,6 +279,21 @@ static ITileImageGenerator BuildImageGenerator(string[] args)
         ?? "procedural";
 
     Log.Information("Building image generator: backend={Backend}", backend);
+
+    if (backend == "openrouter")
+    {
+        var model = GetString(args, "--ai-model")
+            ?? Environment.GetEnvironmentVariable("TILEZ_AI_MODEL")
+            ?? "black-forest-labs/flux.2-klein-4b";
+        var key = Environment.GetEnvironmentVariable("OPENROUTER_API_KEY");
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            throw new InvalidOperationException("OPENROUTER_API_KEY is required for the OpenRouter backend.");
+        }
+
+        Log.Information("OpenRouter image model: {Model}", model);
+        return new OpenRouterTileImageGenerator(new OpenRouterImageOptions(model, key));
+    }
 
     if (backend is "openai" or "ai")
     {

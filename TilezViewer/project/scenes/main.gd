@@ -3,12 +3,18 @@ extends Node2D
 const TILE_SIZE := 128
 const WORLD_SEED := 1337
 const HIGH_DETAIL_ZOOM := 2.5
+const DEFAULT_OPENROUTER_MODEL := "black-forest-labs/flux.2-klein-4b"
 
 var camera: Camera2D
 var label: Label
 var dotnet_dll: String
 var output_root: String
 var image_directory: String
+var image_backend: String
+var image_model: String
+var job_limit := 9
+var jobs_started := 0
+var ready_to_render := false
 var zoom_level := 1.0
 var sprites: Dictionary = {}
 var ready_tiles: Dictionary = {}
@@ -30,19 +36,35 @@ func _ready() -> void:
 	camera = $Camera2D
 	label = $HUD/Label
 	camera.zoom = Vector2.ONE * zoom_level
+	image_backend = OS.get_environment("TILEZ_IMAGE_BACKEND").to_lower()
+	if image_backend.is_empty():
+		image_backend = "openrouter"
+	image_model = OS.get_environment("TILEZ_AI_MODEL")
+	if image_model.is_empty():
+		image_model = DEFAULT_OPENROUTER_MODEL
+	var configured_limit := OS.get_environment("TILEZ_MAX_RENDER_JOBS").to_int()
+	if configured_limit > 0:
+		job_limit = configured_limit
 	dotnet_dll = ProjectSettings.globalize_path("res://../../Tilez/bin/Debug/net10.0/Tilez.dll").simplify_path()
-	output_root = ProjectSettings.globalize_path("res://../../generated").simplify_path()
+	var cache_name := image_backend
+	if image_backend == "openrouter":
+		cache_name += "-" + image_model.sha256_text().substr(0, 12)
+	output_root = ProjectSettings.globalize_path("res://../../generated").simplify_path().path_join(cache_name)
 	image_directory = output_root.path_join("images")
 	if not FileAccess.file_exists(dotnet_dll):
 		label.text = "Tilez generator is missing. Run ./run.sh from the repository root."
 		push_error("Tilez generator is missing: " + dotnet_dll)
 		return
+	if image_backend == "openrouter" and OS.get_environment("OPENROUTER_API_KEY").is_empty():
+		label.text = "Set OPENROUTER_API_KEY and restart. For offline tiles: TILEZ_IMAGE_BACKEND=procedural ./run.sh"
+		return
+	ready_to_render = true
 	label.text = "Tilez Viewer — arrows: pan, +/-: zoom, R: retry"
 	update_visible_tiles()
 	start_next_job()
 
 func _process(delta: float) -> void:
-	if not FileAccess.file_exists(dotnet_dll):
+	if not ready_to_render:
 		return
 	var direction := Vector2.ZERO
 	if Input.is_action_pressed("ui_right"):
@@ -63,6 +85,8 @@ func _process(delta: float) -> void:
 	start_next_job()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if not ready_to_render:
+		return
 	if not event is InputEventKey or not event.pressed or event.echo:
 		return
 	if event.keycode in [KEY_PLUS, KEY_EQUAL, KEY_KP_ADD]:
@@ -71,7 +95,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		zoom_level = maxf(zoom_level - 0.25, 0.5)
 	elif event.keycode == KEY_R:
 		failed.clear()
+		jobs_started = 0
 		update_visible_tiles()
+		start_next_job()
 		return
 	else:
 		return
@@ -123,7 +149,7 @@ func tile_key(coord: Vector2i, detail: int) -> String:
 func artifact_path(coord: Vector2i, detail: int) -> String:
 	if detail == 1:
 		return image_directory.path_join("tile_%d_%d_%d_high_256.png" % [coord.x, coord.y, WORLD_SEED])
-	return image_directory.path_join("tile_%d_%d_%d_low_64_upscaled_128.png" % [coord.x, coord.y, WORLD_SEED])
+	return image_directory.path_join("tile_%d_%d_%d_base_64_upscaled_128.png" % [coord.x, coord.y, WORLD_SEED])
 
 func load_generated_tile(coord: Vector2i, detail: int, display: bool = true) -> bool:
 	var path := artifact_path(coord, detail)
@@ -143,6 +169,9 @@ func load_generated_tile(coord: Vector2i, detail: int, display: bool = true) -> 
 func start_next_job() -> void:
 	if worker_busy or pending.is_empty():
 		return
+	if image_backend == "openrouter" and jobs_started >= job_limit:
+		label.text = "%d render jobs started. Press R for another batch, or raise TILEZ_MAX_RENDER_JOBS." % job_limit
+		return
 	var job: Vector3i = pending.pop_front()
 	var coord := Vector2i(job.x, job.y)
 	var key := tile_key(coord, job.z)
@@ -151,6 +180,8 @@ func start_next_job() -> void:
 		start_next_job()
 		return
 	worker_busy = true
+	if image_backend == "openrouter":
+		jobs_started += 1
 	label.text = "Generating tile (%d, %d)…  Arrows: pan, +/-: zoom, R: retry" % [coord.x, coord.y]
 	worker_task_id = WorkerThreadPool.add_task(render_tile.bind(job))
 
@@ -158,7 +189,8 @@ func render_tile(job: Vector3i) -> void:
 	var output: Array = []
 	var zoom_arg := "3.0" if job.z == 1 else "1.0"
 	var args := PackedStringArray([
-		dotnet_dll, "render", "--x", str(job.x), "--y", str(job.y),
+		dotnet_dll, "render", "--image-backend", image_backend, "--ai-model", image_model,
+		"--x", str(job.x), "--y", str(job.y),
 		"--seed", str(WORLD_SEED), "--zoom", zoom_arg, "--output-root", output_root
 	])
 	var result := OS.execute("dotnet", args, output, true)

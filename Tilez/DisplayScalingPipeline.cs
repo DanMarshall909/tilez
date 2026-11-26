@@ -51,7 +51,7 @@ public sealed class DisplayScalingPipeline
     public TileRenderArtifacts RenderForDisplay(WorldTile tile, float zoomLevel, string outputRoot)
     {
         var metadataPath = TilePersistence.SaveMetadata(tile, outputRoot);
-        var lowRes = _generator.RenderVariant(tile, outputRoot, 64, false, "low");
+        var lowRes = tile.ImagePath;
         var upscaled = _upscaler.UpscaleImage(lowRes, outputRoot, 128, "upscaled");
 
         string? highDetail = null;
