@@ -6,6 +6,32 @@ namespace Tilez.Tests;
 public sealed class OpenRouterCliTests
 {
     [Fact]
+    public void Unknown_backend_does_not_silently_generate_procedural_images()
+    {
+        var outputRoot = Path.Combine(Path.GetTempPath(), $"tilez-invalid-{Guid.NewGuid():N}");
+        var start = new ProcessStartInfo("dotnet")
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false
+        };
+        foreach (var argument in new[]
+        {
+            typeof(TileCoordinate).Assembly.Location,
+            "render", "--image-backend", "procedural/../openrouter-cache", "--output-root", outputRoot
+        }) start.ArgumentList.Add(argument);
+
+        using var process = Process.Start(start)!;
+        var stdout = process.StandardOutput.ReadToEnd();
+        process.StandardError.ReadToEnd();
+        Assert.True(process.WaitForExit(30_000));
+
+        Assert.NotEqual(0, process.ExitCode);
+        Assert.Contains("Unsupported image backend", stdout);
+        Assert.Empty(Directory.GetFiles(outputRoot, "*.png", SearchOption.AllDirectories));
+    }
+
+    [Fact]
     public void Missing_OpenRouter_key_fails_without_a_placeholder_or_a_logged_secret()
     {
         const string sentinel = "sentinel-openrouter-secret-do-not-log";

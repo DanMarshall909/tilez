@@ -314,6 +314,11 @@ static ITileImageGenerator BuildImageGenerator(string[] args)
         return new OpenAiCompatibleTileImageGenerator(new OpenAiImageOptions(baseUrl, model, apiKey));
     }
 
-    Log.Information("Using procedural image generator");
-    return new ProceduralTileImageGenerator();
+    if (backend == "procedural")
+    {
+        Log.Information("Using procedural image generator");
+        return new ProceduralTileImageGenerator();
+    }
+
+    throw new ArgumentException($"Unsupported image backend: {backend}");
 }

@@ -39,15 +39,23 @@ func _ready() -> void:
 	image_backend = OS.get_environment("TILEZ_IMAGE_BACKEND").to_lower()
 	if image_backend.is_empty():
 		image_backend = "openrouter"
+	if image_backend == "ai":
+		image_backend = "openai"
+	if image_backend not in ["openrouter", "openai", "procedural"]:
+		label.text = "Unsupported image backend: " + image_backend
+		return
 	image_model = OS.get_environment("TILEZ_AI_MODEL")
 	if image_model.is_empty():
-		image_model = DEFAULT_OPENROUTER_MODEL
+		if image_backend == "openrouter":
+			image_model = DEFAULT_OPENROUTER_MODEL
+		elif image_backend == "openai":
+			image_model = "flux"
 	var configured_limit := OS.get_environment("TILEZ_MAX_RENDER_JOBS").to_int()
 	if configured_limit > 0:
 		job_limit = configured_limit
 	dotnet_dll = ProjectSettings.globalize_path("res://../../Tilez/bin/Debug/net10.0/Tilez.dll").simplify_path()
 	var cache_name := image_backend
-	if image_backend == "openrouter":
+	if image_backend != "procedural":
 		cache_name += "-" + image_model.sha256_text().substr(0, 12)
 	output_root = ProjectSettings.globalize_path("res://../../generated").simplify_path().path_join(cache_name)
 	image_directory = output_root.path_join("images")
