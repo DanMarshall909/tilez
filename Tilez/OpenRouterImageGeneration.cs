@@ -1,8 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Processing;
+using SkiaSharp;
 
 namespace Tilez;
 
@@ -68,16 +67,17 @@ public sealed class OpenRouterTileImageGenerator : ITileImageGenerator
         }
 
         var bytes = Convert.FromBase64String(encoded.GetString()!);
-        using var image = Image.Load(bytes);
-        if (image.Width != request.Size || image.Height != request.Size)
-            image.Mutate(context => context.Resize(request.Size, request.Size));
+        using var image = PngImages.Decode(bytes);
+        using var resized = image.Width != request.Size || image.Height != request.Size
+            ? PngImages.Resize(image, request.Size, SKFilterMode.Linear)
+            : null;
         var directory = Path.GetDirectoryName(request.OutputPath)
             ?? throw new ArgumentException("An output directory is required.", nameof(request));
         Directory.CreateDirectory(directory);
         var temporaryPath = request.OutputPath + $".{Guid.NewGuid():N}.tmp";
         try
         {
-            image.SaveAsPng(temporaryPath);
+            PngImages.Save(resized ?? image, temporaryPath);
             File.Move(temporaryPath, request.OutputPath, overwrite: true);
         }
         finally

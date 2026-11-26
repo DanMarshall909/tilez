@@ -1,8 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
+using SkiaSharp;
 
 namespace Tilez;
 
@@ -31,7 +30,7 @@ public sealed class ProceduralTileImageGenerator : ITileImageGenerator
         var color = PaletteToRgb(request.Features.PaletteWeights);
         var frequency = request.HighDetail ? 0.45f : 0.2f;
 
-        using var image = new Image<Rgba32>(request.Size, request.Size);
+        using var image = new SKBitmap(request.Size, request.Size);
 
         for (var y = 0; y < request.Size; y++)
         {
@@ -41,11 +40,11 @@ public sealed class ProceduralTileImageGenerator : ITileImageGenerator
                 var r = (byte)Math.Clamp((int)(color.R * wave), 0, 255);
                 var g = (byte)Math.Clamp((int)(color.G * wave), 0, 255);
                 var b = (byte)Math.Clamp((int)(color.B * wave), 0, 255);
-                image[x, y] = new Rgba32(r, g, b, 255);
+                image.SetPixel(x, y, new SKColor(r, g, b, 255));
             }
         }
 
-        image.SaveAsPng(request.OutputPath);
+        PngImages.Save(image, request.OutputPath);
     }
 
     private static (int R, int G, int B) PaletteToRgb(IReadOnlyDictionary<string, float> paletteWeights)

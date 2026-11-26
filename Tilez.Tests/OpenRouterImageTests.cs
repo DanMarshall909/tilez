@@ -1,8 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
+using SkiaSharp;
 using Tilez;
 
 namespace Tilez.Tests;
@@ -12,9 +11,9 @@ public sealed class OpenRouterImageTests
     [Fact]
     public void Generates_a_png_through_the_OpenRouter_images_endpoint()
     {
-        using var source = new Image<Rgba32>(2, 2);
+        using var source = new SKBitmap(2, 2);
         using var stream = new MemoryStream();
-        source.SaveAsPng(stream);
+        Assert.True(source.Encode(stream, SKEncodedImageFormat.Png, 100));
         var reply = JsonSerializer.Serialize(new { data = new[] { new { b64_json = Convert.ToBase64String(stream.ToArray()) } } });
         var handler = new RecordingHandler(new HttpResponseMessage(HttpStatusCode.OK)
         {
@@ -36,7 +35,8 @@ public sealed class OpenRouterImageTests
         Assert.Equal("1:1", body.RootElement.GetProperty("aspect_ratio").GetString());
         Assert.Equal("png", body.RootElement.GetProperty("output_format").GetString());
         Assert.True(body.RootElement.TryGetProperty("seed", out _));
-        using var written = Image.Load(path);
+        using var written = SKBitmap.Decode(path);
+        Assert.NotNull(written);
         Assert.Equal(64, written.Width);
         Assert.Equal(64, written.Height);
     }

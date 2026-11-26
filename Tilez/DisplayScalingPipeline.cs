@@ -1,6 +1,4 @@
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
+using SkiaSharp;
 
 namespace Tilez;
 
@@ -24,15 +22,15 @@ public sealed class CpuNearestNeighborUpscaler : IDisplayUpscaler
 
     public string UpscaleImage(string sourcePath, string outputRoot, int targetSize, string outputTag)
     {
-        using var image = Image.Load<Rgba32>(sourcePath);
-        image.Mutate(ctx => ctx.Resize(targetSize, targetSize, KnownResamplers.NearestNeighbor));
+        using var image = PngImages.Decode(sourcePath);
+        using var resized = PngImages.Resize(image, targetSize, SKFilterMode.Nearest);
 
         var scaledDir = Path.Combine(outputRoot, "images");
         Directory.CreateDirectory(scaledDir);
         var fileName = Path.GetFileNameWithoutExtension(sourcePath) + $"_{outputTag}_{targetSize}.png";
         var outputPath = Path.Combine(scaledDir, fileName);
 
-        image.SaveAsPng(outputPath);
+        PngImages.Save(resized, outputPath);
         return outputPath;
     }
 }
