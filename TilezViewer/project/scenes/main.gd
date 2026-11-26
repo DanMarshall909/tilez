@@ -125,18 +125,19 @@ func artifact_path(coord: Vector2i, detail: int) -> String:
 		return image_directory.path_join("tile_%d_%d_%d_high_256.png" % [coord.x, coord.y, WORLD_SEED])
 	return image_directory.path_join("tile_%d_%d_%d_low_64_upscaled_128.png" % [coord.x, coord.y, WORLD_SEED])
 
-func load_generated_tile(coord: Vector2i, detail: int) -> bool:
+func load_generated_tile(coord: Vector2i, detail: int, display: bool = true) -> bool:
 	var path := artifact_path(coord, detail)
 	if not FileAccess.file_exists(path):
 		return false
 	var image := Image.new()
 	if image.load(path) != OK or image.is_empty():
 		return false
-	var sprite: Sprite2D = sprites[coord]
-	sprite.texture = ImageTexture.create_from_image(image)
-	sprite.scale = Vector2(float(TILE_SIZE) / image.get_width(), float(TILE_SIZE) / image.get_height())
+	if display:
+		var sprite: Sprite2D = sprites[coord]
+		sprite.texture = ImageTexture.create_from_image(image)
+		sprite.scale = Vector2(float(TILE_SIZE) / image.get_width(), float(TILE_SIZE) / image.get_height())
+		displayed_detail[coord] = detail
 	ready_tiles[tile_key(coord, detail)] = true
-	displayed_detail[coord] = detail
 	return true
 
 func start_next_job() -> void:
@@ -165,15 +166,14 @@ func render_tile(job: Vector3i) -> void:
 		call_deferred("finish_job", job, result, "\n".join(output))
 
 func finish_job(job: Vector3i, result: int, output: String) -> void:
+	WorkerThreadPool.wait_for_task_completion(worker_task_id)
+	worker_task_id = -1
 	var coord := Vector2i(job.x, job.y)
 	var key := tile_key(coord, job.z)
 	queued.erase(key)
 	worker_busy = false
-	var image_exists := FileAccess.file_exists(artifact_path(coord, job.z))
-	if result == 0 and image_exists:
-		ready_tiles[key] = true
-		if job.z == (1 if zoom_level >= HIGH_DETAIL_ZOOM else 0):
-			load_generated_tile(coord, job.z)
+	var display := job.z == (1 if zoom_level >= HIGH_DETAIL_ZOOM else 0)
+	if result == 0 and load_generated_tile(coord, job.z, display):
 		label.text = "Tile (%d, %d) ready.  Arrows: pan, +/-: zoom, R: retry" % [coord.x, coord.y]
 	else:
 		failed[key] = true
