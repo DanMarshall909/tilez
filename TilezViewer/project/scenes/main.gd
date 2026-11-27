@@ -130,9 +130,13 @@ func update_visible_tiles() -> void:
 	var min_y := floori((camera.position.y - viewport_size.y / 2.0) / TILE_SIZE) - 1
 	var max_y := floori((camera.position.y + viewport_size.y / 2.0) / TILE_SIZE) + 1
 	var detail := 1 if zoom_level >= HIGH_DETAIL_ZOOM else 0
+	var visible_regions: Dictionary = {}
 	for x in range(min_x, max_x + 1):
 		for y in range(min_y, max_y + 1):
 			var coord := Vector2i(x, y)
+			if uses_regions():
+				var visible_region := Vector2i(floori(float(x) / REGION_SIZE), floori(float(y) / REGION_SIZE))
+				visible_regions["region:%d:%d" % [visible_region.x, visible_region.y]] = true
 			ensure_placeholder(coord)
 			var key := tile_key(coord, detail)
 			if ready_tiles.has(key):
@@ -153,6 +157,15 @@ func update_visible_tiles() -> void:
 				continue
 			queued[key] = true
 			pending.append(Vector3i(x, y, detail))
+	if image_backend == "comfyui":
+		var retained: Array[Vector3i] = []
+		for job in pending:
+			var region_key := "region:%d:%d" % [job.x, job.y]
+			if job.z != -1 or visible_regions.has(region_key):
+				retained.append(job)
+			else:
+				queued.erase(region_key)
+		pending = retained
 	pending.sort_custom(func(a: Vector3i, b: Vector3i) -> bool:
 		if uses_regions():
 			var a_center := Vector2(a.x * REGION_SIZE + 1.5, a.y * REGION_SIZE + 1.5)
