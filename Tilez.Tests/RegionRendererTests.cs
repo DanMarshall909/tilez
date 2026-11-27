@@ -121,6 +121,48 @@ public sealed class RegionRendererTests
         Assert.True(File.Exists(RegionRenderer.TilePath(root, 0, 0, 1337, 128)));
     }
 
+    [Fact]
+    public void A_missing_low_resolution_derivative_is_rebuilt_from_accepted_artwork()
+    {
+        using var temp = new TempRegion();
+        var backend = new RecordingRegionBackend(SKColors.Blue);
+        var renderer = new RegionRenderer(backend);
+        renderer.Render(0, 0, 1337, temp.Path);
+        var highPath = RegionRenderer.TilePath(temp.Path, 0, 0, 1337, 256);
+        var highBytes = File.ReadAllBytes(highPath);
+        File.Delete(RegionRenderer.TilePath(temp.Path, 0, 0, 1337, 128));
+
+        renderer.Render(0, 0, 1337, temp.Path);
+
+        Assert.Single(backend.Requests);
+        Assert.Equal(highBytes, File.ReadAllBytes(highPath));
+        using var low = SKBitmap.Decode(RegionRenderer.TilePath(temp.Path, 0, 0, 1337, 128));
+        Assert.NotNull(low);
+        Assert.Equal(SKColors.Blue, low.GetPixel(64, 64));
+    }
+
+    [Fact]
+    public async Task Concurrent_renderers_publish_one_consistent_region()
+    {
+        using var temp = new TempRegion();
+        var backend = new SlowRegionBackend();
+        var tasks = Enumerable.Range(0, 2).Select(_ => Task.Run(() =>
+            new RegionRenderer(backend).Render(0, 0, 1337, temp.Path)));
+
+        await Task.WhenAll(tasks);
+
+        Assert.Equal(1, backend.RequestCount);
+        for (var x = 0; x < 3; x++)
+        for (var y = 0; y < 3; y++)
+        {
+            using var low = SKBitmap.Decode(RegionRenderer.TilePath(temp.Path, x, y, 1337, 128));
+            using var high = SKBitmap.Decode(RegionRenderer.TilePath(temp.Path, x, y, 1337, 256));
+            Assert.NotNull(low);
+            Assert.NotNull(high);
+            Assert.Equal(low.GetPixel(64, 64), high.GetPixel(128, 128));
+        }
+    }
+
     private sealed class FailingRegionBackend : IRegionImageGenerator
     {
         public byte[] Generate(RegionImageRequest request) => throw new InvalidOperationException("request failed");
@@ -149,6 +191,23 @@ public sealed class RegionRendererTests
             bitmap.Erase(fill);
             using var stream = new MemoryStream();
             Assert.True(bitmap.Encode(stream, SKEncodedImageFormat.Png, 100));
+            return stream.ToArray();
+        }
+    }
+
+    private sealed class SlowRegionBackend : IRegionImageGenerator
+    {
+        public int RequestCount;
+
+        public byte[] Generate(RegionImageRequest request)
+        {
+            Interlocked.Increment(ref RequestCount);
+            Thread.Sleep(100);
+            using var bitmap = new SKBitmap(900, 900);
+            bitmap.Erase(SKColors.Blue);
+            using var stream = new MemoryStream();
+            if (!bitmap.Encode(stream, SKEncodedImageFormat.Png, 100))
+                throw new InvalidOperationException("Could not encode test image.");
             return stream.ToArray();
         }
     }

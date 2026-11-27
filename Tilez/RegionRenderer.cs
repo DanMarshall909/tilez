@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using SkiaSharp;
 
 namespace Tilez;
@@ -34,11 +35,25 @@ public sealed class RegionRenderer(IRegionImageGenerator backend)
         var originX = checked(regionX * RegionSize);
         var originY = checked(regionY * RegionSize);
         var marker = MarkerPath(outputRoot, regionX, regionY, seed);
+        using var regionLock = AcquireRegionLock(marker + ".lock");
         var missing = new List<(int X, int Y)>();
         for (var x = originX; x < originX + RegionSize; x++)
         for (var y = originY; y < originY + RegionSize; y++)
         {
-            if (!IsAccepted(TilePath(outputRoot, x, y, seed, 128))) missing.Add((x, y));
+            var lowPath = TilePath(outputRoot, x, y, seed, 128);
+            if (IsAccepted(lowPath)) continue;
+            var highPath = TilePath(outputRoot, x, y, seed, 256);
+            if (IsAccepted(highPath))
+            {
+                using var high = PngImages.Decode(highPath);
+                using var low = PngImages.Resize(high, 128, SKFilterMode.Linear);
+                using var tiny = PngImages.Resize(high, 64, SKFilterMode.Linear);
+                Directory.CreateDirectory(Path.GetDirectoryName(lowPath)!);
+                SaveNew(low, lowPath);
+                SaveNew(tiny, TilePath(outputRoot, x, y, seed, 64));
+                continue;
+            }
+            missing.Add((x, y));
         }
 
         if (missing.Count > 0)
@@ -165,6 +180,23 @@ public sealed class RegionRenderer(IRegionImageGenerator backend)
         finally
         {
             if (File.Exists(temporary)) File.Delete(temporary);
+        }
+    }
+
+    private static FileStream AcquireRegionLock(string path)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var timer = Stopwatch.StartNew();
+        while (true)
+        {
+            try
+            {
+                return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            }
+            catch (IOException) when (timer.Elapsed < TimeSpan.FromMinutes(3))
+            {
+                Thread.Sleep(50);
+            }
         }
     }
 
