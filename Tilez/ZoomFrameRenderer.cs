@@ -42,7 +42,7 @@ public sealed class ZoomFrameRenderer(IZoomFrameImageGenerator backend)
                 canvas.DrawBitmap(previous,
                     new SKRect(inset, inset, inset + SourceCropSize, inset + SourceCropSize),
                     new SKRect(0, 0, RenderSize, RenderSize),
-                    new SKSamplingOptions(SKFilterMode.Nearest));
+                    new SKSamplingOptions(SKCubicResampler.Mitchell));
             }
             using var encoded = enlargedCenter.Encode(SKEncodedImageFormat.Png, 100)
                 ?? throw new InvalidOperationException("Could not encode the center crop.");
@@ -68,7 +68,7 @@ public sealed class ZoomFrameRenderer(IZoomFrameImageGenerator backend)
 
     private static string PromptFor(int depth) => depth == 0
         ? "A single continuous top-down pixel art fantasy landscape, a mysterious clockwork forest with winding paths, mossy ruins and luminous streams. Crisp deliberate pixel art, coherent lighting, full bleed, no frame, border, panel, text or vignette."
-        : $"Zoom slightly deeper into the exact center of the supplied fantasy landscape. Preserve the positions and shapes of its paths, streams, objects, colours and layout. Add many small, distinct pixel art details at this closer scale: individual stones, moss fronds, leaves, tiny gears and glowing traces. The supplied image is the composition to refine, not a new scene. Sharp deliberate edges and small details, full bleed, no frame, border, panel, text or vignette.";
+        : $"Zoom slightly deeper into the exact center of the supplied fantasy landscape. Preserve the positions and shapes of its paths, streams, objects, colours and layout. Add many small, distinct pixel art details at this closer scale: individual stones, moss fronds, leaves, tiny gears and glowing traces. Resolve large flat pixel blocks into finer scene detail. Keep rivers, paths, coastlines and vegetation naturally irregular rather than rectangular. The supplied image is the composition to refine, not a new scene. Sharp deliberate small details, full bleed, no frame, border, panel, text or vignette.";
 
     private static int FrameSeed(int seed, int depth)
     {

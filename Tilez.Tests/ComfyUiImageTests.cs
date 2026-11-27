@@ -81,6 +81,7 @@ public sealed class ComfyUiImageTests
         var scheduler = nodes.Values.Single(node => node.GetProperty("class_type").GetString() == "Flux2Scheduler");
         Assert.Equal(512, scheduler.GetProperty("inputs").GetProperty("width").GetInt32());
         Assert.Equal(512, scheduler.GetProperty("inputs").GetProperty("height").GetInt32());
+        Assert.Equal(withReference ? 5 : 4, scheduler.GetProperty("inputs").GetProperty("steps").GetInt32());
         Assert.Equal(withReference, nodes.Values.Any(node => node.GetProperty("class_type").GetString() == "VAEEncode"));
         Assert.Equal(withReference, nodes.Values.Any(node => node.GetProperty("class_type").GetString() == "SplitSigmasDenoise"));
         Assert.DoesNotContain(nodes.Values, node => node.GetProperty("class_type").GetString() == "VAEEncodeForInpaint");
@@ -91,7 +92,7 @@ public sealed class ComfyUiImageTests
         if (withReference)
         {
             var split = nodes.Values.Single(node => node.GetProperty("class_type").GetString() == "SplitSigmasDenoise");
-            Assert.Equal(0.75, split.GetProperty("inputs").GetProperty("denoise").GetDouble());
+            Assert.Equal(0.8, split.GetProperty("inputs").GetProperty("denoise").GetDouble());
         }
     }
 

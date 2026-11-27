@@ -8,6 +8,10 @@ func _run() -> void:
 	scene.auto_generate = false
 	root.add_child(scene)
 	await process_frame
+	if not scene.output_root.ends_with("center-zoom-v3"):
+		push_error("New zoom settings reused the old accepted-frame cache")
+		quit(1)
+		return
 	scene.attempts[0] = 3
 	scene._update_status()
 	if not scene.status_label.text.contains("failed at depth 0"):

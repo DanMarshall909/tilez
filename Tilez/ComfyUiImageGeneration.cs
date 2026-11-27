@@ -223,7 +223,8 @@ public sealed class ComfyUiTileImageGenerator : ITileImageGenerator, IRegionImag
         nodes["15"] = Node("VAEEncode", new { pixels = Ref("14"), vae = Ref("3") });
         nodes["16"] = Node("ReferenceLatent", new { conditioning = Ref("4"), latent = Ref("15") });
         nodes["17"] = Node("ReferenceLatent", new { conditioning = Ref("5"), latent = Ref("15") });
-        nodes["19"] = Node("SplitSigmasDenoise", new { sigmas = Ref("8"), denoise = 0.75 });
+        nodes["8"] = Node("Flux2Scheduler", new { steps = 5, width = request.Size, height = request.Size });
+        nodes["19"] = Node("SplitSigmasDenoise", new { sigmas = Ref("8"), denoise = 0.8 });
         nodes["10"] = Node("CFGGuider", new { model = Ref("1"), positive = Ref("16"), negative = Ref("17"), cfg = 1.0 });
         nodes["11"] = Node("SamplerCustomAdvanced", new
         {
