@@ -19,7 +19,7 @@ func _run() -> void:
 		push_error("Local generation did not queue the first shared region")
 		quit(1)
 		return
-	if not scene.output_root.contains("comfyui-regions-v3-"):
+	if not scene.output_root.contains("comfyui-regions-v4-"):
 		push_error("The local cache was not isolated from remote images")
 		quit(1)
 		return

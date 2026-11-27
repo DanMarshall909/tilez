@@ -64,8 +64,8 @@ public sealed class RegionRenderer(IRegionImageGenerator backend, int cellSize =
             var layout = SelectLayout(originX, originY, seed, outputRoot);
             var (reference, mask) = CreateReference(layout, seed, outputRoot, cellSize);
             var prompt = reference is null
-                ? "One continuous top-down illustrated fantasy world map, coherent terrain, roads and structures across the entire image. No borders, grid lines, labels or separate panels."
-                : "Outpaint the pale blank area of this top-down illustrated world map. Extend the existing roads, structures, terrain, palette and lighting naturally into the blank area. Keep the existing artwork in its exact position. One continuous scene, no borders, grid lines, labels or separate panels.";
+                ? "Seamless top-down illustrated fantasy landscape with coherent terrain, roads and structures. The artwork fills the canvas and continues beyond every edge. No frame, margins, paper, grid lines, tile boundaries, labels or panels."
+                : "Outpaint only the pale blank area of this seamless top-down illustrated fantasy landscape. Extend the existing roads, structures, terrain, palette and lighting naturally into the blank area. Keep the existing artwork in its exact position. The artwork fills the canvas and continues beyond every edge. No frame, margins, paper, grid lines, tile boundaries, labels or panels.";
             var bytes = backend.Generate(new RegionImageRequest(prompt, RegionSeed(seed, regionX, regionY),
                 layout.AspectRatio, reference, mask, cellSize));
             using var generated = PngImages.Decode(bytes);
@@ -77,8 +77,10 @@ public sealed class RegionRenderer(IRegionImageGenerator backend, int cellSize =
                 throw new InvalidDataException("Region image has the wrong aspect ratio.");
 
             Directory.CreateDirectory(Path.Combine(outputRoot, "images"));
-            var marginX = generated.Width * 0.02f;
-            var marginY = generated.Height * 0.02f;
+            // A referenced region already has exact tile coordinates in its mask.
+            // Cropping it would move the generated continuation away from that boundary.
+            var marginX = reference is null ? generated.Width * 0.02f : 0f;
+            var marginY = reference is null ? generated.Height * 0.02f : 0f;
             var innerWidth = generated.Width - 2 * marginX;
             var innerHeight = generated.Height - 2 * marginY;
             foreach (var (x, y) in missing)

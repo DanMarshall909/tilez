@@ -62,7 +62,7 @@ func _ready() -> void:
 	var cache_name := image_backend
 	if image_backend != "procedural":
 		if uses_regions():
-			cache_name += "-regions-v3" if image_backend == "comfyui" else "-regions-v2"
+			cache_name += "-regions-v4" if image_backend == "comfyui" else "-regions-v3"
 		var model_identity := image_model
 		if image_backend == "comfyui":
 			model_identity += ":" + OS.get_environment("TILEZ_COMFYUI_TEXT_ENCODER") + ":" + OS.get_environment("TILEZ_COMFYUI_VAE") + ":" + OS.get_environment("TILEZ_LOCAL_CELL_SIZE")

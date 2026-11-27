@@ -202,6 +202,32 @@ public sealed class RegionRendererTests
         Assert.Equal((768, 576), (mask.Width, mask.Height));
     }
 
+    [Theory]
+    [InlineData(128)]
+    [InlineData(192)]
+    public void Outpainted_road_keeps_its_reference_position_at_the_shared_edge(int cellSize)
+    {
+        using var temp = new TempRegion();
+        var oldPath = RegionRenderer.TilePath(temp.Path, 2, 0, 1337, 128);
+        Directory.CreateDirectory(Path.GetDirectoryName(oldPath)!);
+        using (var old = new SKBitmap(128, 128))
+        {
+            old.Erase(SKColors.White);
+            using var canvas = new SKCanvas(old);
+            using var paint = new SKPaint { Color = SKColors.Red };
+            canvas.DrawRect(new SKRect(0, 30, 128, 34), paint);
+            using var stream = File.Create(oldPath);
+            Assert.True(old.Encode(stream, SKEncodedImageFormat.Png, 100));
+        }
+
+        new RegionRenderer(new RoadContinuationBackend(), cellSize).Render(1, 0, 1337, temp.Path);
+
+        using var next = SKBitmap.Decode(RegionRenderer.TilePath(temp.Path, 3, 0, 1337, 256));
+        Assert.NotNull(next);
+        Assert.Equal(SKColors.Red, next.GetPixel(32, 64));
+        Assert.Equal(SKColors.White, next.GetPixel(32, 50));
+    }
+
     private sealed class FailingRegionBackend : IRegionImageGenerator
     {
         public byte[] Generate(RegionImageRequest request) => throw new InvalidOperationException("request failed");
@@ -263,6 +289,24 @@ public sealed class RegionRendererTests
             using var stream = new MemoryStream();
             if (!bitmap.Encode(stream, SKEncodedImageFormat.Png, 100))
                 throw new InvalidOperationException("Could not encode test image.");
+            return stream.ToArray();
+        }
+    }
+
+    private sealed class RoadContinuationBackend : IRegionImageGenerator
+    {
+        public byte[] Generate(RegionImageRequest request)
+        {
+            Assert.NotNull(request.ReferencePng);
+            using var bitmap = new SKBitmap(4 * request.CellSize, 3 * request.CellSize);
+            bitmap.Erase(SKColors.White);
+            using var canvas = new SKCanvas(bitmap);
+            using var paint = new SKPaint { Color = SKColors.Red };
+            var roadY = request.CellSize / 4f;
+            canvas.DrawRect(new SKRect(request.CellSize, roadY - 2,
+                bitmap.Width, roadY + 2), paint);
+            using var stream = new MemoryStream();
+            Assert.True(bitmap.Encode(stream, SKEncodedImageFormat.Png, 100));
             return stream.ToArray();
         }
     }
