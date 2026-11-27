@@ -6,6 +6,50 @@ namespace Tilez.Tests;
 public sealed class ZoomFrameRendererTests
 {
     [Fact]
+    public void High_resolution_zoom_keeps_every_source_and_output_pixel_at_1024()
+    {
+        using var temp = new ZoomDirectory();
+        using var first = new SKBitmap(1024, 1024);
+        first.Erase(SKColors.Black);
+        first.SetPixel(256, 256, SKColors.Red);
+        Save(first, ZoomFrameRenderer.FramePath(temp.Path, 1337, 0));
+        var backend = new RecordingZoomBackend(size: 1024);
+
+        var path = new ZoomFrameRenderer(backend, 1024, ZoomCompositionMode.NestedScene).Render(1, 1337, temp.Path);
+
+        Assert.Equal(1024, backend.Requests[0].Size);
+        using var reference = SKBitmap.Decode(backend.Requests[0].ReferencePng);
+        using var mask = SKBitmap.Decode(backend.Requests[0].MaskPng);
+        using var saved = SKBitmap.Decode(path);
+        Assert.NotNull(reference);
+        Assert.NotNull(mask);
+        Assert.NotNull(saved);
+        Assert.Equal((1024, 1024), (saved.Width, saved.Height));
+        Assert.Equal(SKColors.Red, reference.GetPixel(0, 0));
+        Assert.Equal(SKColors.Red, reference.GetPixel(1, 1));
+        Assert.Equal(SKColors.Black, mask.GetPixel(0, 0));
+        Assert.Equal(SKColors.White, mask.GetPixel(512, 512));
+        Assert.Equal(reference.GetPixel(0, 0), saved.GetPixel(0, 0));
+        Assert.Equal(reference.GetPixel(255, 512), saved.GetPixel(255, 512));
+        Assert.Equal(SKColors.Purple, saved.GetPixel(512, 512));
+        Assert.Contains("perspective", backend.Requests[0].Prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("centered passage", backend.Requests[0].Prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Nested_zoom_begins_with_a_perspective_scene_leading_into_the_center()
+    {
+        using var temp = new ZoomDirectory();
+        var backend = new RecordingZoomBackend(size: 1024);
+
+        new ZoomFrameRenderer(backend, 1024, ZoomCompositionMode.NestedScene).Render(0, 1337, temp.Path);
+
+        Assert.Contains("perspective", backend.Requests[0].Prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("central opening", backend.Requests[0].Prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("top-down", backend.Requests[0].Prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Next_frame_uses_the_exact_center_of_the_accepted_image_at_twice_its_display_resolution()
     {
         using var temp = new ZoomDirectory();

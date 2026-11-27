@@ -8,6 +8,18 @@ From the repository root, run `./run-zoom-local.sh`. This opens a separate Godot
 
 Each frame is generated at 512×512. The viewer shows a centered 256×256 window with nearest-neighbor texture filtering and an integer screen scale. Each step zooms 2× into the current frame's central 256×256 pixels. Those pixels are enlarged exactly into a 512×512 back buffer. ComfyUI redraws only the back buffer's central 256×256 area with five full denoising steps. Tilez keeps the outer pixels exactly, anchors broad shapes inside the edit to the enlarged source, adds generated fine detail, and feathers the inner edge. The current frame keeps zooming while the back buffer renders. When ready, the new center grows in the same position and fades into view. At the handoff the front and back buffers swap, then generation starts again from the newly displayed frame. If the back buffer is late, the viewer holds at the handoff and reveals it when ready. This workflow has no temperature parameter.
 
+## OpenAI nested zoom
+
+For a short paid trial through OpenRouter, which can route to OpenAI's GPT Image model, run:
+
+```bash
+TILEZ_ZOOM_MAX_DEPTH=2 ./run-zoom-openrouter.sh
+```
+
+For a direct OpenAI API key, run `TILEZ_ZOOM_MAX_DEPTH=2 ./run-zoom-openai.sh`. Each launcher reads its key from `OPENROUTER_API_KEY` or `OPENAI_API_KEY`; neither accepts a key on the command line. Omit `TILEZ_ZOOM_MAX_DEPTH` to keep generating indefinitely. Set `TILEZ_OPENAI_IMAGE_MODEL` and `TILEZ_OPENAI_IMAGE_QUALITY` to choose a model and quality; the default is GPT Image 2.6 Sunburst at medium quality. These requests consume API credit, and each route keeps its own model-and-quality-specific accepted-frame cache.
+
+The OpenAI routes retain the model's native 1024×1024 output. The viewer shows a centered 512×512 window with nearest-neighbor filtering, using twice the displayed resolution for each frame and revealing the extra pixels as it zooms. The first image is a perspective scene leading into a passage at the exact center. Each new frame enlarges the current 512×512 center to 1024×1024, then reveals a related steampunk scene with another central opening in the inner 512×512. The outer pixels remain exact, and the inner scene is feathered into them. Prompt changes use version 2 caches, separate for the direct and OpenRouter routes. Direct OpenAI edits receive a transparent center mask. OpenRouter exposes the current image as a reference but does not expose that mask, so its model may change the requested center less precisely; Tilez still preserves the outer pixels in the accepted artifact. The direct OpenAI route needs an account with available image API credit.
+
 ## Run on the local GPU
 
 On this machine, ComfyUI and the FLUX.2 Klein 4B FP8 model are installed. From the repository root:

@@ -17,6 +17,20 @@ try
     var mode = args.Length > 0 ? args[0].ToLowerInvariant() : "single";
     logger.Information("Mode: {Mode}", mode);
 
+    if (mode == "zoom-frame")
+    {
+        var zoomBackend = BuildZoomBackend(args);
+        var depth = GetInt(args, "--depth", 0);
+        var seed = GetInt(args, "--seed", 1337);
+        var highResolution = zoomBackend is OpenAiZoomFrameImageGenerator or OpenRouterZoomFrameImageGenerator;
+        var path = new ZoomFrameRenderer(zoomBackend, highResolution ? 1024 : 512,
+            highResolution ? ZoomCompositionMode.NestedScene : ZoomCompositionMode.FineDetail)
+            .Render(depth, seed, outputRoot);
+        Console.WriteLine($"Zoom frame {depth} ready: {path}");
+        logger.Information("Tilez CLI completed successfully");
+        return;
+    }
+
     var imageGenerator = BuildImageGenerator(args);
     var generator = new SingleTileGenerator(imageGenerator);
     var painter = new WorldPainter(generator);
@@ -181,17 +195,6 @@ try
             break;
         }
 
-    case "zoom-frame":
-        {
-            if (imageGenerator is not IZoomFrameImageGenerator zoomBackend)
-                throw new ArgumentException("zoom-frame requires a backend that supports progressive zoom images.");
-            var depth = GetInt(args, "--depth", 0);
-            var seed = GetInt(args, "--seed", 1337);
-            var path = new ZoomFrameRenderer(zoomBackend).Render(depth, seed, outputRoot);
-            Console.WriteLine($"Zoom frame {depth} ready: {path}");
-            break;
-        }
-
     case "render":
         {
             var x = GetInt(args, "--x", 0);
@@ -297,6 +300,37 @@ static string[] RedactSecrets(string[] args)
     }
 
     return safe;
+}
+
+static IZoomFrameImageGenerator BuildZoomBackend(string[] args)
+{
+    var backend = GetString(args, "--image-backend")?.ToLowerInvariant()
+        ?? Environment.GetEnvironmentVariable("TILEZ_IMAGE_BACKEND")?.ToLowerInvariant()
+        ?? "comfyui";
+    if (backend == "openai-zoom")
+    {
+        var key = Environment.GetEnvironmentVariable("OPENAI_API_KEY")
+            ?? throw new InvalidOperationException("OPENAI_API_KEY is required for OpenAI zoom generation.");
+        var model = GetString(args, "--ai-model")
+            ?? Environment.GetEnvironmentVariable("TILEZ_OPENAI_IMAGE_MODEL")
+            ?? "gpt-image-2.6-sunburst";
+        var quality = Environment.GetEnvironmentVariable("TILEZ_OPENAI_IMAGE_QUALITY") ?? "medium";
+        Log.Information("OpenAI zoom model: {Model}, quality: {Quality}", model, quality);
+        return new OpenAiZoomFrameImageGenerator(new OpenAiZoomImageOptions(model, key, quality));
+    }
+    if (backend == "openrouter-zoom")
+    {
+        var key = Environment.GetEnvironmentVariable("OPENROUTER_API_KEY")
+            ?? throw new InvalidOperationException("OPENROUTER_API_KEY is required for OpenRouter zoom generation.");
+        var model = GetString(args, "--ai-model")
+            ?? Environment.GetEnvironmentVariable("TILEZ_OPENAI_IMAGE_MODEL")
+            ?? "openai/gpt-image-2.6-sunburst";
+        var quality = Environment.GetEnvironmentVariable("TILEZ_OPENAI_IMAGE_QUALITY") ?? "medium";
+        Log.Information("OpenRouter zoom model: {Model}, quality: {Quality}", model, quality);
+        return new OpenRouterZoomFrameImageGenerator(new OpenRouterZoomImageOptions(model, key, quality));
+    }
+    return BuildImageGenerator(args) as IZoomFrameImageGenerator
+        ?? throw new ArgumentException("zoom-frame requires a backend that supports progressive zoom images.");
 }
 
 static ITileImageGenerator BuildImageGenerator(string[] args)

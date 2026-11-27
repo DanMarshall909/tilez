@@ -4,9 +4,9 @@ extends Node2D
 @export var seconds_per_zoom := 8.0
 @export var max_depth := -1
 
-const render_size := 512
-const display_size := 256
-const source_crop_size := 256
+var render_size := 512
+var display_size := 256
+var source_crop_size := 256
 const world_seed := 1337
 
 @onready var display_sprite: Sprite2D = $Image
@@ -14,6 +14,7 @@ const world_seed := 1337
 @onready var status_label: Label = $Status
 
 var output_root := ""
+var image_backend := "comfyui"
 var current_depth := -1
 var zoom_progress := 0.0
 var reveal_progress := 0.0
@@ -29,9 +30,26 @@ func _exit_tree() -> void:
 		OS.kill(active_pid)
 
 func _ready() -> void:
+	image_backend = OS.get_environment("TILEZ_ZOOM_BACKEND").to_lower()
+	if image_backend.is_empty():
+		image_backend = "comfyui"
+	if image_backend == "openai-zoom" or image_backend == "openrouter-zoom":
+		render_size = 1024
+		display_size = 512
+		source_crop_size = 512
 	if output_root.is_empty():
 		var custom_root := OS.get_environment("TILEZ_ZOOM_OUTPUT_ROOT")
-		output_root = custom_root.path_join("center-zoom-v5") if not custom_root.is_empty() else ProjectSettings.globalize_path("res://../../generated/center-zoom-v5")
+		var cache_name := "center-zoom-v5"
+		if image_backend == "openai-zoom" or image_backend == "openrouter-zoom":
+			var model := OS.get_environment("TILEZ_OPENAI_IMAGE_MODEL")
+			if model.is_empty():
+				model = "gpt-image-2.6-sunburst" if image_backend == "openai-zoom" else "openai/gpt-image-2.6-sunburst"
+			var quality := OS.get_environment("TILEZ_OPENAI_IMAGE_QUALITY")
+			if quality.is_empty():
+				quality = "medium"
+			var identity := (model + "|" + quality).sha256_text().substr(0, 12)
+			cache_name = ("center-zoom-openai-v2-" if image_backend == "openai-zoom" else "center-zoom-openrouter-v2-") + identity
+		output_root = custom_root.path_join(cache_name) if not custom_root.is_empty() else ProjectSettings.globalize_path("res://../../generated/" + cache_name)
 	if OS.has_environment("TILEZ_ZOOM_MAX_DEPTH"):
 		max_depth = int(OS.get_environment("TILEZ_ZOOM_MAX_DEPTH"))
 	get_viewport().size_changed.connect(_update_display)
@@ -64,7 +82,7 @@ func step_zoom(delta: float) -> void:
 
 func accept_frame(depth: int, image_texture: Texture2D) -> void:
 	if image_texture.get_width() != render_size or image_texture.get_height() != render_size:
-		push_error("Zoom frames must be 512 by 512 pixels")
+		push_error("Zoom frames must match the selected render size")
 		return
 	frames[depth] = image_texture
 	if current_depth < 0 and depth == 0:
@@ -90,7 +108,8 @@ func _update_display() -> void:
 	if incoming_sprite.visible:
 		var detail_atlas := AtlasTexture.new()
 		detail_atlas.atlas = frames[current_depth + 1]
-		detail_atlas.region = Rect2(128, 128, 256, 256)
+		var inner_size := render_size / 2
+		detail_atlas.region = Rect2(render_size / 4, render_size / 4, inner_size, inner_size)
 		incoming_sprite.texture = detail_atlas
 		incoming_sprite.position = viewport_size / 2.0
 		incoming_sprite.scale = display_sprite.scale * 0.5
@@ -120,9 +139,7 @@ func _ensure_prefetch() -> void:
 		return
 	if attempts.get(wanted, 0) >= 3:
 		return
-	var dll := ProjectSettings.globalize_path("res://../../Tilez/bin/Debug/net10.0/Tilez.dll")
-	var arguments := PackedStringArray([dll, "zoom-frame", "--image-backend", "comfyui", "--depth", str(wanted), "--seed", str(world_seed), "--output-root", output_root])
-	active_pid = OS.create_process("dotnet", arguments)
+	active_pid = OS.create_process("dotnet", build_generation_arguments(wanted))
 	if active_pid <= 0:
 		status_label.text = "Could not launch the zoom renderer"
 		retry_at = Time.get_ticks_msec() / 1000.0 + 5.0
@@ -134,6 +151,10 @@ func _ensure_prefetch() -> void:
 
 func planned_prefetch_depth() -> int:
 	return 0 if current_depth < 0 else current_depth + 1
+
+func build_generation_arguments(depth: int) -> PackedStringArray:
+	var dll := ProjectSettings.globalize_path("res://../../Tilez/bin/Debug/net10.0/Tilez.dll")
+	return PackedStringArray([dll, "zoom-frame", "--image-backend", image_backend, "--depth", str(depth), "--seed", str(world_seed), "--output-root", output_root])
 
 func _poll_generation() -> void:
 	if active_pid <= 0 or OS.is_process_running(active_pid):
