@@ -16,7 +16,7 @@ func _run() -> void:
 	root.add_child(scene)
 	await process_frame
 	OS.set_environment("TILEZ_ZOOM_OUTPUT_ROOT", "")
-	if scene.output_root != custom_root.path_join("center-zoom-v4") or scene._load_cached_frame(0):
+	if scene.output_root != custom_root.path_join("center-zoom-v5") or scene._load_cached_frame(0):
 		push_error("New zoom settings reused the old accepted-frame cache")
 		quit(1)
 		return
@@ -59,12 +59,12 @@ func _run() -> void:
 		quit(1)
 		return
 	scene.step_zoom(1.0)
-	if scene.zoom_progress != 0.0:
-		push_error("Zoom began before a new frame was ready")
+	if scene.zoom_progress <= 0.0 or scene.incoming_sprite.visible:
+		push_error("The front buffer did not zoom while the next frame rendered")
 		quit(1)
 		return
 	scene.accept_frame(1, ImageTexture.create_from_image(image))
-	scene.step_zoom(1.0)
+	scene.step_zoom(0.25)
 	if scene.zoom_progress <= 0.0 or scene.current_depth != 0:
 		push_error("Zoom did not advance toward the prepared frame")
 		quit(1)
@@ -94,7 +94,7 @@ func _run() -> void:
 		push_error("Zoom did not narrow the central image region")
 		quit(1)
 		return
-	scene.step_zoom(2.5)
+	scene.step_zoom(0.5)
 	if not scene.incoming_sprite.visible or scene.incoming_sprite.modulate.a <= early_alpha or scene.incoming_sprite.scale.x <= early_scale:
 		push_error("The inner detail did not grow and emerge through the zoom")
 		quit(1)
@@ -106,6 +106,22 @@ func _run() -> void:
 		return
 	if scene.planned_prefetch_depth() != 2 or scene.frames.size() != 1:
 		push_error("The buffers were not swapped before scheduling another frame")
+		quit(1)
+		return
+	scene.step_zoom(10.0)
+	if scene.current_depth != 1 or scene.zoom_progress != 1.0:
+		push_error("The front buffer did not hold at the handoff while rendering ran late")
+		quit(1)
+		return
+	scene.accept_frame(2, ImageTexture.create_from_image(image))
+	scene.step_zoom(0.25)
+	if scene.current_depth != 1 or not scene.incoming_sprite.visible or scene.reveal_progress <= 0.0:
+		push_error("The late frame appeared abruptly instead of revealing its center")
+		quit(1)
+		return
+	scene.step_zoom(1.0)
+	if scene.current_depth != 2 or scene.frames.has(1):
+		push_error("The late back buffer did not become the next front buffer")
 		quit(1)
 		return
 	print("Predictive center zoom passed")

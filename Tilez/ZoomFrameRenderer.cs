@@ -96,15 +96,13 @@ public sealed class ZoomFrameRenderer(IZoomFrameImageGenerator backend)
     }
 
     private static string PromptFor(int depth) => depth == 0
-        ? "A single continuous top-down pixel art fantasy landscape, a mysterious clockwork forest with winding paths, mossy ruins and luminous streams. Crisp deliberate pixel art, coherent lighting, full bleed, no frame, border, panel, text or vignette."
-        : $"Refine only the masked center half of this enlarged fantasy landscape at depth {depth}. Treat the surrounding pixels as fixed context. Continue the same paths, water, stones, vegetation, light and object positions through the mask boundary, revealing fine details within the enlarged pixels. Match the existing top-down illustrated game-map style, inked contours and palette. Keep natural contours irregular; avoid photographic blur. Do not introduce a new composition, frame, border, square patch, panel, text or vignette.";
+        ? "A single continuous top-down pixel-art steampunk cityscape: interlocking brass clockwork, copper pipes, winding railways, cobbled alleys, steam vents, iron bridges and warm glowing lamps. Rich amber and teal palette, crisp inked outlines, coherent lighting and readable shapes. Full bleed, no frame, border, panel, text or vignette."
+        : $"Refine only the masked center half of this enlarged steampunk cityscape at depth {depth}. Treat the surrounding pixels as fixed context. Preserve the shapes and positions of brass mechanisms, copper pipes, winding railways, cobbled alleys and steam vents. Continue existing objects through the mask boundary, revealing fine clockwork and architectural details within the enlarged pixels. Match the existing top-down illustrated pixel-art style, inked contours and amber-teal palette. Keep natural contours irregular; avoid photographic blur. Do not introduce a new composition, frame, border, square patch, panel, text or vignette.";
 
     private static SKBitmap ComposeInnerDetail(SKBitmap reference, SKBitmap generated)
     {
         var result = new SKBitmap(RenderSize, RenderSize);
-        using var referenceSmall = PngImages.Resize(reference, 64, SKFilterMode.Linear);
         using var generatedSmall = PngImages.Resize(generated, 64, SKFilterMode.Linear);
-        using var referenceLow = PngImages.Resize(referenceSmall, RenderSize, SKFilterMode.Linear);
         using var generatedLow = PngImages.Resize(generatedSmall, RenderSize, SKFilterMode.Linear);
         var inset = (RenderSize - InnerDetailSize) / 2;
         var last = inset + InnerDetailSize - 1;
@@ -122,12 +120,11 @@ public sealed class ZoomFrameRenderer(IZoomFrameImageGenerator backend)
                 }
                 var weight = Math.Clamp((edge + 1f) / feather, 0f, 1f);
                 var detail = generated.GetPixel(x, y);
-                var sourceLow = referenceLow.GetPixel(x, y);
                 var detailLow = generatedLow.GetPixel(x, y);
                 result.SetPixel(x, y, new SKColor(
-                    Lerp(source.Red, Correct(detail.Red, detailLow.Red, sourceLow.Red), weight),
-                    Lerp(source.Green, Correct(detail.Green, detailLow.Green, sourceLow.Green), weight),
-                    Lerp(source.Blue, Correct(detail.Blue, detailLow.Blue, sourceLow.Blue), weight),
+                    Lerp(source.Red, AddDetail(source.Red, detail.Red, detailLow.Red), weight),
+                    Lerp(source.Green, AddDetail(source.Green, detail.Green, detailLow.Green), weight),
+                    Lerp(source.Blue, AddDetail(source.Blue, detail.Blue, detailLow.Blue), weight),
                     Lerp(source.Alpha, detail.Alpha, weight)));
             }
         }
@@ -136,8 +133,8 @@ public sealed class ZoomFrameRenderer(IZoomFrameImageGenerator backend)
         static byte Lerp(byte a, byte b, float t) =>
             (byte)Math.Clamp((int)MathF.Round(a + (b - a) * t), 0, 255);
 
-        static byte Correct(byte detail, byte detailLow, byte sourceLow) =>
-            (byte)Math.Clamp((int)MathF.Round(detail + 0.5f * (sourceLow - detailLow)), 0, 255);
+        static byte AddDetail(byte source, byte detail, byte detailLow) =>
+            (byte)Math.Clamp(source + detail - detailLow, 0, 255);
     }
 
     private static int FrameSeed(int seed, int depth)

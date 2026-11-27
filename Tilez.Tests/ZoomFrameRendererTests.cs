@@ -40,8 +40,8 @@ public sealed class ZoomFrameRendererTests
         Assert.NotNull(saved);
         Assert.Equal((512, 512), (saved.Width, saved.Height));
         Assert.Equal(SKColors.Red, saved.GetPixel(0, 0));
-        Assert.InRange(saved.GetPixel(256, 256).Red, (byte)50, (byte)80);
-        Assert.InRange(saved.GetPixel(128, 256).Red, (byte)1, (byte)127);
+        Assert.Equal(reference.GetPixel(256, 256), saved.GetPixel(256, 256));
+        Assert.Equal(reference.GetPixel(128, 256), saved.GetPixel(128, 256));
         for (var y = 0; y < 512; y++)
             for (var x = 0; x < 512; x++)
                 if (x < 128 || x >= 384 || y < 128 || y >= 384)
@@ -87,6 +87,24 @@ public sealed class ZoomFrameRendererTests
     }
 
     [Fact]
+    public void Conflicting_model_colours_cannot_erase_an_existing_boundary()
+    {
+        using var temp = new ZoomDirectory();
+        using var first = new SKBitmap(512, 512);
+        for (var y = 0; y < 512; y++)
+            for (var x = 0; x < 512; x++)
+                first.SetPixel(x, y, x < 256 ? SKColors.Black : SKColors.White);
+        Save(first, ZoomFrameRenderer.FramePath(temp.Path, 1337, 0));
+
+        var next = new ZoomFrameRenderer(new ConflictingBoundaryBackend()).Render(1, 1337, temp.Path);
+
+        using var image = SKBitmap.Decode(next);
+        Assert.NotNull(image);
+        Assert.InRange(image.GetPixel(200, 256).Red, (byte)0, (byte)20);
+        Assert.InRange(image.GetPixel(312, 256).Red, (byte)235, (byte)255);
+    }
+
+    [Fact]
     public void Accepted_frames_are_reused_without_another_generation_request()
     {
         using var temp = new ZoomDirectory();
@@ -102,6 +120,7 @@ public sealed class ZoomFrameRendererTests
         Assert.Equal(2, backend.Requests.Count);
         Assert.Null(backend.Requests[0].ReferencePng);
         Assert.NotNull(backend.Requests[1].ReferencePng);
+        Assert.All(backend.Requests, request => Assert.Contains("steampunk", request.Prompt, StringComparison.OrdinalIgnoreCase));
         Assert.NotEqual(backend.Requests[0].Prompt, backend.Requests[1].Prompt);
         Assert.Equal(firstBytes, File.ReadAllBytes(first));
     }
@@ -170,6 +189,19 @@ public sealed class ZoomFrameRendererTests
                     var shade = ((x / 4 + y / 4) & 1) == 0 ? (byte)160 : (byte)96;
                     image.SetPixel(x, y, new SKColor(shade, shade, shade));
                 }
+            using var encoded = image.Encode(SKEncodedImageFormat.Png, 100);
+            return encoded.ToArray();
+        }
+    }
+
+    private sealed class ConflictingBoundaryBackend : IZoomFrameImageGenerator
+    {
+        public byte[] Generate(ZoomFrameRequest request)
+        {
+            using var image = new SKBitmap(request.Size, request.Size);
+            for (var y = 0; y < request.Size; y++)
+                for (var x = 0; x < request.Size; x++)
+                    image.SetPixel(x, y, x < 256 ? SKColors.White : SKColors.Black);
             using var encoded = image.Encode(SKEncodedImageFormat.Png, 100);
             return encoded.ToArray();
         }

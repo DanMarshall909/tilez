@@ -1,7 +1,7 @@
 extends Node2D
 
 @export var auto_generate := true
-@export var seconds_per_zoom := 4.0
+@export var seconds_per_zoom := 8.0
 @export var max_depth := -1
 
 const render_size := 512
@@ -16,6 +16,7 @@ const world_seed := 1337
 var output_root := ""
 var current_depth := -1
 var zoom_progress := 0.0
+var reveal_progress := 0.0
 var frames: Dictionary = {}
 var active_pid := -1
 var active_depth := -1
@@ -30,7 +31,7 @@ func _exit_tree() -> void:
 func _ready() -> void:
 	if output_root.is_empty():
 		var custom_root := OS.get_environment("TILEZ_ZOOM_OUTPUT_ROOT")
-		output_root = custom_root.path_join("center-zoom-v4") if not custom_root.is_empty() else ProjectSettings.globalize_path("res://../../generated/center-zoom-v4")
+		output_root = custom_root.path_join("center-zoom-v5") if not custom_root.is_empty() else ProjectSettings.globalize_path("res://../../generated/center-zoom-v5")
 	if OS.has_environment("TILEZ_ZOOM_MAX_DEPTH"):
 		max_depth = int(OS.get_environment("TILEZ_ZOOM_MAX_DEPTH"))
 	get_viewport().size_changed.connect(_update_display)
@@ -49,14 +50,15 @@ func _process(delta: float) -> void:
 func step_zoom(delta: float) -> void:
 	if current_depth < 0 or (max_depth >= 0 and current_depth >= max_depth):
 		return
-	if not frames.has(current_depth + 1):
-		return
 	zoom_progress = minf(1.0, zoom_progress + delta / maxf(seconds_per_zoom, 0.01))
+	if frames.has(current_depth + 1):
+		reveal_progress = minf(zoom_progress, reveal_progress + delta)
 	_update_display()
-	if zoom_progress >= 1.0:
+	if zoom_progress >= 1.0 and reveal_progress >= 1.0:
 		current_depth += 1
 		frames.erase(current_depth - 1)
 		zoom_progress = 0.0
+		reveal_progress = 0.0
 		_update_display()
 		_update_status()
 
@@ -84,7 +86,7 @@ func _update_display() -> void:
 	display_sprite.position = viewport_size / 2.0
 	display_sprite.scale = Vector2.ONE * (float(display_size) / extent) * pixel_scale
 	display_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	incoming_sprite.visible = frames.has(current_depth + 1) and zoom_progress > 0.0
+	incoming_sprite.visible = frames.has(current_depth + 1) and reveal_progress > 0.0
 	if incoming_sprite.visible:
 		var detail_atlas := AtlasTexture.new()
 		detail_atlas.atlas = frames[current_depth + 1]
@@ -92,7 +94,7 @@ func _update_display() -> void:
 		incoming_sprite.texture = detail_atlas
 		incoming_sprite.position = viewport_size / 2.0
 		incoming_sprite.scale = display_sprite.scale * 0.5
-		incoming_sprite.modulate.a = zoom_progress * zoom_progress * (3.0 - 2.0 * zoom_progress)
+		incoming_sprite.modulate.a = reveal_progress * reveal_progress * (3.0 - 2.0 * reveal_progress)
 		incoming_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 
 func _frame_path(depth: int) -> String:
