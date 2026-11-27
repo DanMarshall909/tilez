@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using Serilog;
 using SkiaSharp;
 
 namespace Tilez;
@@ -17,7 +18,7 @@ public sealed class OpenRouterImageOptions
     }
 }
 
-public sealed class OpenRouterTileImageGenerator : ITileImageGenerator
+public sealed class OpenRouterTileImageGenerator : ITileImageGenerator, IRegionImageGenerator
 {
     private static readonly Uri Endpoint = new("https://openrouter.ai/api/v1/images");
     private static readonly HttpClient SharedClient = new() { Timeout = TimeSpan.FromMinutes(3) };
@@ -34,39 +35,7 @@ public sealed class OpenRouterTileImageGenerator : ITileImageGenerator
 
     public void Generate(TileImageRequest request)
     {
-        var payload = JsonSerializer.Serialize(new
-        {
-            model = _options.Model,
-            prompt = BuildPrompt(request),
-            aspect_ratio = "1:1",
-            output_format = "png",
-            seed = CoordinateSeed(request)
-        });
-
-        using var message = new HttpRequestMessage(HttpMethod.Post, Endpoint)
-        {
-            Content = new StringContent(payload, Encoding.UTF8, "application/json")
-        };
-        message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.ApiKey);
-
-        using var response = _client.Send(message);
-        if (!response.IsSuccessStatusCode)
-        {
-            throw new InvalidOperationException($"OpenRouter image request failed with HTTP {(int)response.StatusCode}.");
-        }
-
-        var json = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
-        using var document = JsonDocument.Parse(json);
-        if (!document.RootElement.TryGetProperty("data", out var data)
-            || data.ValueKind != JsonValueKind.Array
-            || data.GetArrayLength() == 0
-            || !data[0].TryGetProperty("b64_json", out var encoded)
-            || string.IsNullOrWhiteSpace(encoded.GetString()))
-        {
-            throw new InvalidOperationException("OpenRouter returned no image data.");
-        }
-
-        var bytes = Convert.FromBase64String(encoded.GetString()!);
+        var bytes = Generate(new RegionImageRequest(BuildPrompt(request), CoordinateSeed(request), "1:1", null));
         using var image = PngImages.Decode(bytes);
         using var resized = image.Width != request.Size || image.Height != request.Size
             ? PngImages.Resize(image, request.Size, SKFilterMode.Linear)
@@ -84,6 +53,58 @@ public sealed class OpenRouterTileImageGenerator : ITileImageGenerator
         {
             if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
         }
+    }
+
+    public byte[] Generate(RegionImageRequest request)
+    {
+        var payload = new Dictionary<string, object>
+        {
+            ["model"] = _options.Model,
+            ["prompt"] = request.Prompt,
+            ["aspect_ratio"] = request.AspectRatio,
+            ["output_format"] = "png",
+            ["seed"] = request.Seed
+        };
+        if (request.ReferencePng is not null)
+        {
+            payload["input_references"] = new[]
+            {
+                new { type = "image_url", image_url = new { url = "data:image/png;base64," + Convert.ToBase64String(request.ReferencePng) } }
+            };
+        }
+
+        using var message = new HttpRequestMessage(HttpMethod.Post, Endpoint)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+        };
+        message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.ApiKey);
+
+        using var response = _client.Send(message);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException($"OpenRouter image request failed with HTTP {(int)response.StatusCode}.");
+        }
+
+        var json = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+        using var document = JsonDocument.Parse(json);
+        if (document.RootElement.TryGetProperty("usage", out var usage)
+            && usage.ValueKind == JsonValueKind.Object
+            && usage.TryGetProperty("cost", out var cost)
+            && cost.ValueKind == JsonValueKind.Number
+            && cost.TryGetDecimal(out var usd))
+        {
+            Log.Information("OpenRouter image request cost: USD {Cost}", usd);
+        }
+        if (!document.RootElement.TryGetProperty("data", out var data)
+            || data.ValueKind != JsonValueKind.Array
+            || data.GetArrayLength() == 0
+            || !data[0].TryGetProperty("b64_json", out var encoded)
+            || string.IsNullOrWhiteSpace(encoded.GetString()))
+        {
+            throw new InvalidOperationException("OpenRouter returned no image data.");
+        }
+
+        return Convert.FromBase64String(encoded.GetString()!);
     }
 
     private static int CoordinateSeed(TileImageRequest request)

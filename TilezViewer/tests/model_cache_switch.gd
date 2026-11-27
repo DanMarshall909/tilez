@@ -17,6 +17,7 @@ func _run() -> void:
 	OS.set_environment("TILEZ_IMAGE_BACKEND", "openai")
 	OS.set_environment("TILEZ_AI_MODEL", first_model)
 	var first_scene = load("res://scenes/main.tscn").instantiate()
+	first_scene.zoom_level = 2.0
 	root.add_child(first_scene)
 	if not first_scene.ready_tiles.has(first_scene.tile_key(Vector2i.ZERO, 0)):
 		push_error("First model's cached tile was not loaded")
@@ -27,6 +28,7 @@ func _run() -> void:
 
 	OS.set_environment("TILEZ_AI_MODEL", second_model)
 	var second_scene = load("res://scenes/main.tscn").instantiate()
+	second_scene.zoom_level = 2.0
 	root.add_child(second_scene)
 	if second_scene.ready_tiles.has(second_scene.tile_key(Vector2i.ZERO, 0)):
 		push_error("Second model reused the first model's tile")

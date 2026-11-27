@@ -165,6 +165,18 @@ try
             break;
         }
 
+    case "render-region":
+        {
+            if (imageGenerator is not IRegionImageGenerator regionBackend)
+                throw new ArgumentException("render-region requires an image backend that supports region generation.");
+            var regionX = GetInt(args, "--region-x", 0);
+            var regionY = GetInt(args, "--region-y", 0);
+            var seed = GetInt(args, "--seed", 1337);
+            new RegionRenderer(regionBackend).Render(regionX, regionY, seed, outputRoot);
+            Console.WriteLine($"Region ({regionX}, {regionY}) ready: {RegionRenderer.MarkerPath(outputRoot, regionX, regionY, seed)}");
+            break;
+        }
+
     case "render":
         {
             var x = GetInt(args, "--x", 0);

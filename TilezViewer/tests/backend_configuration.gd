@@ -16,6 +16,12 @@ func _run() -> void:
 			push_error("Local model default or cache identity is wrong")
 			quit(1)
 			return
+	elif backend == "openrouter":
+		var expected_model: String = model if not model.is_empty() else "black-forest-labs/flux.2-klein-4b"
+		if not scene.output_root.ends_with("openrouter-regions-v1-" + expected_model.sha256_text().substr(0, 12)):
+			push_error("OpenRouter region cache reused the old independent tile cache")
+			quit(1)
+			return
 	elif backend.contains("/"):
 		if scene.ready_to_render:
 			push_error("Invalid backend was accepted")

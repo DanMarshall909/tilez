@@ -1,6 +1,7 @@
 extends Node2D
 
 const TILE_SIZE := 128
+const REGION_SIZE := 3
 const WORLD_SEED := 1337
 const HIGH_DETAIL_ZOOM := 2.5
 const DEFAULT_OPENROUTER_MODEL := "black-forest-labs/flux.2-klein-4b"
@@ -15,7 +16,7 @@ var image_model: String
 var job_limit := 9
 var jobs_started := 0
 var ready_to_render := false
-var zoom_level := 1.0
+var zoom_level := 2.5
 var sprites: Dictionary = {}
 var ready_tiles: Dictionary = {}
 var displayed_detail: Dictionary = {}
@@ -35,6 +36,7 @@ func _exit_tree() -> void:
 func _ready() -> void:
 	camera = $Camera2D
 	label = $HUD/Label
+	camera.position = Vector2.ONE * TILE_SIZE * 1.5
 	camera.zoom = Vector2.ONE * zoom_level
 	image_backend = OS.get_environment("TILEZ_IMAGE_BACKEND").to_lower()
 	if image_backend.is_empty():
@@ -56,6 +58,8 @@ func _ready() -> void:
 	dotnet_dll = ProjectSettings.globalize_path("res://../../Tilez/bin/Debug/net10.0/Tilez.dll").simplify_path()
 	var cache_name := image_backend
 	if image_backend != "procedural":
+		if image_backend == "openrouter":
+			cache_name += "-regions-v1"
 		cache_name += "-" + image_model.sha256_text().substr(0, 12)
 	output_root = ProjectSettings.globalize_path("res://../../generated").simplify_path().path_join(cache_name)
 	image_directory = output_root.path_join("images")
@@ -133,9 +137,21 @@ func update_visible_tiles() -> void:
 				continue
 			if load_generated_tile(coord, detail):
 				continue
+			if image_backend == "openrouter":
+				var region := Vector2i(floori(float(x) / REGION_SIZE), floori(float(y) / REGION_SIZE))
+				var region_key := "region:%d:%d" % [region.x, region.y]
+				if queued.has(region_key) or failed.has(region_key):
+					continue
+				queued[region_key] = true
+				pending.append(Vector3i(region.x, region.y, -1))
+				continue
 			queued[key] = true
 			pending.append(Vector3i(x, y, detail))
 	pending.sort_custom(func(a: Vector3i, b: Vector3i) -> bool:
+		if image_backend == "openrouter":
+			var a_center := Vector2(a.x * REGION_SIZE + 1.5, a.y * REGION_SIZE + 1.5)
+			var b_center := Vector2(b.x * REGION_SIZE + 1.5, b.y * REGION_SIZE + 1.5)
+			return a_center.distance_squared_to(center) < b_center.distance_squared_to(center)
 		return Vector2(a.x - center.x, a.y - center.y).length_squared() < Vector2(b.x - center.x, b.y - center.y).length_squared()
 	)
 
@@ -154,8 +170,12 @@ func ensure_placeholder(coord: Vector2i) -> void:
 func tile_key(coord: Vector2i, detail: int) -> String:
 	return "%d:%d:%d" % [coord.x, coord.y, detail]
 
+func region_marker_path(coord: Vector2i) -> String:
+	var region := Vector2i(floori(float(coord.x) / REGION_SIZE), floori(float(coord.y) / REGION_SIZE))
+	return output_root.path_join("regions/region_%d_%d_%d.complete" % [region.x, region.y, WORLD_SEED])
+
 func artifact_path(coord: Vector2i, detail: int) -> String:
-	if detail == 1:
+	if detail == 1 and (image_backend != "openrouter" or FileAccess.file_exists(region_marker_path(coord))):
 		return image_directory.path_join("tile_%d_%d_%d_high_256.png" % [coord.x, coord.y, WORLD_SEED])
 	return image_directory.path_join("tile_%d_%d_%d_base_64_upscaled_128.png" % [coord.x, coord.y, WORLD_SEED])
 
@@ -182,25 +202,33 @@ func start_next_job() -> void:
 		return
 	var job: Vector3i = pending.pop_front()
 	var coord := Vector2i(job.x, job.y)
-	var key := tile_key(coord, job.z)
-	if ready_tiles.has(key):
+	var key := "region:%d:%d" % [job.x, job.y] if job.z == -1 else tile_key(coord, job.z)
+	if job.z != -1 and ready_tiles.has(key):
 		queued.erase(key)
 		start_next_job()
 		return
 	worker_busy = true
 	if image_backend == "openrouter":
 		jobs_started += 1
-	label.text = "Generating tile (%d, %d)…  Arrows: pan, +/-: zoom, R: retry" % [coord.x, coord.y]
+	label.text = "Expanding region (%d, %d)…" % [coord.x, coord.y] if job.z == -1 else "Generating tile (%d, %d)…  Arrows: pan, +/-: zoom, R: retry" % [coord.x, coord.y]
 	worker_task_id = WorkerThreadPool.add_task(render_tile.bind(job))
 
 func render_tile(job: Vector3i) -> void:
 	var output: Array = []
-	var zoom_arg := "3.0" if job.z == 1 else "1.0"
-	var args := PackedStringArray([
-		dotnet_dll, "render", "--image-backend", image_backend, "--ai-model", image_model,
-		"--x", str(job.x), "--y", str(job.y),
-		"--seed", str(WORLD_SEED), "--zoom", zoom_arg, "--output-root", output_root
-	])
+	var args: PackedStringArray
+	if job.z == -1:
+		args = PackedStringArray([
+			dotnet_dll, "render-region", "--image-backend", image_backend, "--ai-model", image_model,
+			"--region-x", str(job.x), "--region-y", str(job.y),
+			"--seed", str(WORLD_SEED), "--output-root", output_root
+		])
+	else:
+		var zoom_arg := "3.0" if job.z == 1 else "1.0"
+		args = PackedStringArray([
+			dotnet_dll, "render", "--image-backend", image_backend, "--ai-model", image_model,
+			"--x", str(job.x), "--y", str(job.y),
+			"--seed", str(WORLD_SEED), "--zoom", zoom_arg, "--output-root", output_root
+		])
 	var result := OS.execute("dotnet", args, output, true)
 	if not stopping:
 		call_deferred("finish_job", job, result, "\n".join(output))
@@ -209,9 +237,25 @@ func finish_job(job: Vector3i, result: int, output: String) -> void:
 	WorkerThreadPool.wait_for_task_completion(worker_task_id)
 	worker_task_id = -1
 	var coord := Vector2i(job.x, job.y)
-	var key := tile_key(coord, job.z)
+	var key := "region:%d:%d" % [job.x, job.y] if job.z == -1 else tile_key(coord, job.z)
 	queued.erase(key)
 	worker_busy = false
+	if job.z == -1:
+		if result == 0:
+			for x in range(job.x * REGION_SIZE, (job.x + 1) * REGION_SIZE):
+				for y in range(job.y * REGION_SIZE, (job.y + 1) * REGION_SIZE):
+					var tile := Vector2i(x, y)
+					ready_tiles.erase(tile_key(tile, 0))
+					ready_tiles.erase(tile_key(tile, 1))
+					displayed_detail.erase(tile)
+			update_visible_tiles()
+			label.text = "Region (%d, %d) ready.  Arrows: pan, +/-: zoom, R: retry" % [job.x, job.y]
+		else:
+			failed[key] = true
+			label.text = "Region (%d, %d) failed. Press R to retry." % [job.x, job.y]
+			push_error("Region generation failed (%s): %s" % [key, output])
+		start_next_job()
+		return
 	var display := job.z == (1 if zoom_level >= HIGH_DETAIL_ZOOM else 0)
 	if result == 0 and load_generated_tile(coord, job.z, display):
 		label.text = "Tile (%d, %d) ready.  Arrows: pan, +/-: zoom, R: retry" % [coord.x, coord.y]
