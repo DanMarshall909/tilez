@@ -1,0 +1,165 @@
+extends Node2D
+
+@export var auto_generate := true
+@export var seconds_per_zoom := 4.0
+@export var max_depth := -1
+
+const render_size := 512
+const display_size := 256
+const source_crop_size := 410
+const world_seed := 1337
+
+@onready var display_sprite: Sprite2D = $Image
+@onready var incoming_sprite: Sprite2D = $Incoming
+@onready var status_label: Label = $Status
+
+var output_root := ""
+var current_depth := -1
+var zoom_progress := 0.0
+var frames: Dictionary = {}
+var active_pid := -1
+var active_depth := -1
+var attempts: Dictionary = {}
+var retry_at := 0.0
+var generation_started_at := 0.0
+
+func _exit_tree() -> void:
+	if active_pid > 0 and OS.is_process_running(active_pid):
+		OS.kill(active_pid)
+
+func _ready() -> void:
+	if output_root.is_empty():
+		output_root = OS.get_environment("TILEZ_ZOOM_OUTPUT_ROOT")
+	if output_root.is_empty():
+		output_root = ProjectSettings.globalize_path("res://../../generated/center-zoom-v2")
+	if OS.has_environment("TILEZ_ZOOM_MAX_DEPTH"):
+		max_depth = int(OS.get_environment("TILEZ_ZOOM_MAX_DEPTH"))
+	get_viewport().size_changed.connect(_update_display)
+	_update_display()
+	if auto_generate:
+		_load_cached_frame(0)
+		_ensure_prefetch()
+	_update_status()
+
+func _process(delta: float) -> void:
+	if auto_generate:
+		_poll_generation()
+		_ensure_prefetch()
+	step_zoom(delta)
+
+func step_zoom(delta: float) -> void:
+	if current_depth < 0 or (max_depth >= 0 and current_depth >= max_depth):
+		return
+	if not frames.has(current_depth + 1):
+		return
+	zoom_progress = minf(1.0, zoom_progress + delta / maxf(seconds_per_zoom, 0.01))
+	_update_display()
+	if zoom_progress >= 1.0:
+		current_depth += 1
+		frames.erase(current_depth - 1)
+		zoom_progress = 0.0
+		_update_display()
+		_update_status()
+
+func accept_frame(depth: int, image_texture: Texture2D) -> void:
+	if image_texture.get_width() != render_size or image_texture.get_height() != render_size:
+		push_error("Zoom frames must be 512 by 512 pixels")
+		return
+	frames[depth] = image_texture
+	if current_depth < 0 and depth == 0:
+		current_depth = 0
+		_update_display()
+	_update_status()
+
+func _update_display() -> void:
+	if current_depth < 0 or not frames.has(current_depth) or display_sprite == null:
+		return
+	var viewport_size := get_viewport_rect().size
+	var pixel_scale := maxf(1.0, floorf(minf(viewport_size.x, viewport_size.y) / float(display_size)))
+	var extent := float(render_size) - float(render_size - source_crop_size) * zoom_progress
+	var inset := (float(render_size) - extent) / 2.0
+	var atlas := AtlasTexture.new()
+	atlas.atlas = frames[current_depth]
+	atlas.region = Rect2(inset, inset, extent, extent)
+	display_sprite.texture = atlas
+	display_sprite.position = viewport_size / 2.0
+	display_sprite.scale = Vector2.ONE * (float(display_size) / extent) * pixel_scale
+	display_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	incoming_sprite.visible = frames.has(current_depth + 1) and zoom_progress > 0.8
+	if incoming_sprite.visible:
+		incoming_sprite.texture = frames[current_depth + 1]
+		incoming_sprite.position = viewport_size / 2.0
+		incoming_sprite.scale = Vector2.ONE * 0.5 * pixel_scale
+		incoming_sprite.modulate.a = clampf((zoom_progress - 0.8) / 0.2, 0.0, 1.0)
+		incoming_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+
+func _frame_path(depth: int) -> String:
+	return output_root.path_join("frames").path_join("frame_%04d.png" % depth)
+
+func _load_cached_frame(depth: int) -> bool:
+	if frames.has(depth):
+		return true
+	var path := _frame_path(depth)
+	if not FileAccess.file_exists(path):
+		return false
+	var image := Image.new()
+	if image.load(path) != OK or image.get_width() != render_size or image.get_height() != render_size:
+		return false
+	accept_frame(depth, ImageTexture.create_from_image(image))
+	return true
+
+func _ensure_prefetch() -> void:
+	if active_pid > 0 or Time.get_ticks_msec() / 1000.0 < retry_at:
+		return
+	var wanted := planned_prefetch_depth()
+	if (max_depth >= 0 and wanted > max_depth) or _load_cached_frame(wanted):
+		return
+	if attempts.get(wanted, 0) >= 3:
+		return
+	var dll := ProjectSettings.globalize_path("res://../../Tilez/bin/Debug/net10.0/Tilez.dll")
+	var arguments := PackedStringArray([dll, "zoom-frame", "--image-backend", "comfyui", "--depth", str(wanted), "--seed", str(world_seed), "--output-root", output_root])
+	active_pid = OS.create_process("dotnet", arguments)
+	if active_pid <= 0:
+		status_label.text = "Could not launch the zoom renderer"
+		retry_at = Time.get_ticks_msec() / 1000.0 + 5.0
+		return
+	active_depth = wanted
+	generation_started_at = Time.get_ticks_msec() / 1000.0
+	attempts[wanted] = attempts.get(wanted, 0) + 1
+	_update_status()
+
+func planned_prefetch_depth() -> int:
+	var wanted := 0 if current_depth < 0 else current_depth + 1
+	if frames.has(wanted) and zoom_progress > 0.0 and (max_depth < 0 or wanted < max_depth):
+		wanted += 1
+	return wanted
+
+func _poll_generation() -> void:
+	if active_pid <= 0 or OS.is_process_running(active_pid):
+		return
+	var finished_depth := active_depth
+	active_pid = -1
+	active_depth = -1
+	if _load_cached_frame(finished_depth):
+		if finished_depth > 0:
+			update_generation_duration(Time.get_ticks_msec() / 1000.0 - generation_started_at)
+	else:
+		retry_at = Time.get_ticks_msec() / 1000.0 + 5.0
+	_update_status()
+
+func update_generation_duration(duration: float) -> void:
+	seconds_per_zoom = clampf(duration * 1.15, 2.0, 15.0)
+
+func _update_status() -> void:
+	if status_label == null:
+		return
+	if current_depth < 0:
+		status_label.text = "Generating first 512×512 frame…"
+	elif max_depth >= 0 and current_depth >= max_depth:
+		status_label.text = "Center zoom complete · depth %d" % current_depth
+	elif active_depth >= 0:
+		status_label.text = "Center zoom · depth %d · preparing frame %d" % [current_depth, active_depth]
+	elif attempts.get(current_depth + 1, 0) >= 3:
+		status_label.text = "Generation failed at depth %d · restart to retry" % (current_depth + 1)
+	else:
+		status_label.text = "Center zoom · depth %d · next frame ready" % current_depth

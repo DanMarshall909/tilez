@@ -181,6 +181,17 @@ try
             break;
         }
 
+    case "zoom-frame":
+        {
+            if (imageGenerator is not IZoomFrameImageGenerator zoomBackend)
+                throw new ArgumentException("zoom-frame requires a backend that supports progressive zoom images.");
+            var depth = GetInt(args, "--depth", 0);
+            var seed = GetInt(args, "--seed", 1337);
+            var path = new ZoomFrameRenderer(zoomBackend).Render(depth, seed, outputRoot);
+            Console.WriteLine($"Zoom frame {depth} ready: {path}");
+            break;
+        }
+
     case "render":
         {
             var x = GetInt(args, "--x", 0);

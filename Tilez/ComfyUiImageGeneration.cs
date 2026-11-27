@@ -12,7 +12,7 @@ public sealed record ComfyUiImageOptions(Uri BaseUrl, string DiffusionModel, str
         "flux-2-klein-4b-fp8.safetensors", "qwen_3_4b.safetensors", "flux2-vae.safetensors");
 }
 
-public sealed class ComfyUiTileImageGenerator : ITileImageGenerator, IRegionImageGenerator
+public sealed class ComfyUiTileImageGenerator : ITileImageGenerator, IRegionImageGenerator, IZoomFrameImageGenerator
 {
     private static readonly HttpClient SharedClient = new() { Timeout = TimeSpan.FromMinutes(2) };
     private readonly ComfyUiImageOptions _options;
@@ -69,6 +69,27 @@ public sealed class ComfyUiTileImageGenerator : ITileImageGenerator, IRegionImag
         }
 
         var workflow = BuildWorkflow(request, width, height, referenceName, maskName);
+        return RunWorkflow(workflow);
+    }
+
+    public byte[] Generate(ZoomFrameRequest request)
+    {
+        if (request.Size != ZoomFrameRenderer.RenderSize)
+            throw new ArgumentOutOfRangeException(nameof(request), "Zoom frames must be 512 pixels square.");
+        string? referenceName = null;
+        if (request.ReferencePng is not null)
+        {
+            using var reference = PngImages.Decode(request.ReferencePng);
+            if (reference.Width != request.Size || reference.Height != request.Size)
+                throw new InvalidDataException("The zoom reference must be 512 pixels square.");
+            referenceName = UploadPng(request.ReferencePng);
+        }
+        var workflow = BuildZoomWorkflow(request, referenceName);
+        return RunWorkflow(workflow);
+    }
+
+    private byte[] RunWorkflow(Dictionary<string, object> workflow)
+    {
         using var promptReply = Send(HttpMethod.Post, "prompt", JsonContent.Create(new
         {
             prompt = workflow,
@@ -185,6 +206,30 @@ public sealed class ComfyUiTileImageGenerator : ITileImageGenerator, IRegionImag
             negative = Ref("17");
         }
         nodes["10"] = Node("CFGGuider", new { model = Ref("1"), positive, negative, cfg = 1.0 });
+        return nodes;
+    }
+
+    private Dictionary<string, object> BuildZoomWorkflow(ZoomFrameRequest request, string? referenceName)
+    {
+        static object[] Ref(string id, int output = 0) => [id, output];
+        static object Node(string type, object inputs) => new { class_type = type, inputs };
+
+        var nodes = BuildWorkflow(new RegionImageRequest(request.Prompt, request.Seed, "1:1", null),
+            request.Size, request.Size, null, null);
+        nodes["13"] = Node("SaveImage", new { images = Ref("12"), filename_prefix = "tilez-zoom" });
+        if (referenceName is null) return nodes;
+
+        nodes["14"] = Node("LoadImage", new { image = referenceName });
+        nodes["15"] = Node("VAEEncode", new { pixels = Ref("14"), vae = Ref("3") });
+        nodes["16"] = Node("ReferenceLatent", new { conditioning = Ref("4"), latent = Ref("15") });
+        nodes["17"] = Node("ReferenceLatent", new { conditioning = Ref("5"), latent = Ref("15") });
+        nodes["19"] = Node("SplitSigmasDenoise", new { sigmas = Ref("8"), denoise = 0.75 });
+        nodes["10"] = Node("CFGGuider", new { model = Ref("1"), positive = Ref("16"), negative = Ref("17"), cfg = 1.0 });
+        nodes["11"] = Node("SamplerCustomAdvanced", new
+        {
+            noise = Ref("6"), guider = Ref("10"), sampler = Ref("7"),
+            sigmas = Ref("19", 1), latent_image = Ref("15")
+        });
         return nodes;
     }
 }

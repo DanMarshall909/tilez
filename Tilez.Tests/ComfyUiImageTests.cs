@@ -57,6 +57,44 @@ public sealed class ComfyUiImageTests
         Assert.Contains("ComfyUI", error.Message);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Zoom_frames_use_a_512_pixel_canvas_and_refine_the_previous_center_when_present(bool withReference)
+    {
+        using var bitmap = new SKBitmap(512, 512);
+        bitmap.Erase(SKColors.Blue);
+        using var encoded = bitmap.Encode(SKEncodedImageFormat.Png, 100);
+        var png = encoded.ToArray();
+        var handler = new RecordingComfyHandler(png);
+        using var client = new HttpClient(handler);
+        var generator = new ComfyUiTileImageGenerator(new ComfyUiImageOptions(
+            new Uri("http://127.0.0.1:8188/"), "flux-2-klein-4b-fp8.safetensors",
+            "qwen_3_4b.safetensors", "flux2-vae.safetensors"), client);
+
+        generator.Generate(new ZoomFrameRequest("Zoom to the center", 42, withReference ? png : null));
+
+        Assert.Equal(withReference ? 1 : 0, handler.UploadCount);
+        using var prompt = JsonDocument.Parse(handler.PromptBody!);
+        var nodes = prompt.RootElement.GetProperty("prompt").EnumerateObject()
+            .ToDictionary(node => node.Name, node => node.Value);
+        var scheduler = nodes.Values.Single(node => node.GetProperty("class_type").GetString() == "Flux2Scheduler");
+        Assert.Equal(512, scheduler.GetProperty("inputs").GetProperty("width").GetInt32());
+        Assert.Equal(512, scheduler.GetProperty("inputs").GetProperty("height").GetInt32());
+        Assert.Equal(withReference, nodes.Values.Any(node => node.GetProperty("class_type").GetString() == "VAEEncode"));
+        Assert.Equal(withReference, nodes.Values.Any(node => node.GetProperty("class_type").GetString() == "SplitSigmasDenoise"));
+        Assert.DoesNotContain(nodes.Values, node => node.GetProperty("class_type").GetString() == "VAEEncodeForInpaint");
+        var sampler = nodes.Values.Single(node => node.GetProperty("class_type").GetString() == "SamplerCustomAdvanced");
+        var latentId = sampler.GetProperty("inputs").GetProperty("latent_image")[0].GetString()!;
+        Assert.Equal(withReference ? "VAEEncode" : "EmptyFlux2LatentImage",
+            nodes[latentId].GetProperty("class_type").GetString());
+        if (withReference)
+        {
+            var split = nodes.Values.Single(node => node.GetProperty("class_type").GetString() == "SplitSigmasDenoise");
+            Assert.Equal(0.75, split.GetProperty("inputs").GetProperty("denoise").GetDouble());
+        }
+    }
+
     private sealed class RecordingComfyHandler(byte[] png, bool failPrompt = false) : HttpMessageHandler
     {
         public int UploadCount { get; private set; }
