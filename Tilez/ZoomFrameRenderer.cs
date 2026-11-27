@@ -38,7 +38,8 @@ public sealed class ZoomFrameRenderer(
     {
         var path = FramePath(outputRoot, seed, depth);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        EnsureCacheIdentity(outputRoot, cacheIdentity);
+        EnsureCacheIdentity(outputRoot, cacheIdentity ?? $"local|{compositionMode}|{_renderSize}",
+            cacheIdentity is null, _renderSize);
         using var frameLock = AcquireLock(path + ".lock");
         if (IsAccepted(path, _renderSize)) return path;
 
@@ -202,24 +203,24 @@ public sealed class ZoomFrameRenderer(
         }
     }
 
-    private static void EnsureCacheIdentity(string root, string? identity)
+    private static void EnsureCacheIdentity(string root, string identity, bool acceptUnmarkedLocalFrames, int size)
     {
         using var identityLock = AcquireLock(Path.Combine(root, ".zoom-cache-identity.lock"));
         var marker = Path.Combine(root, ".zoom-cache-identity");
-        if (identity is null)
-        {
-            if (File.Exists(marker))
-                throw new InvalidOperationException("This zoom output directory belongs to a paid image backend.");
-            return;
-        }
         if (File.Exists(marker))
         {
             if (File.ReadAllText(marker) != identity)
                 throw new InvalidOperationException("This zoom output directory belongs to a different backend, model or generation setting.");
             return;
         }
-        if (Directory.EnumerateFiles(root, "frame_*.png", SearchOption.AllDirectories).Any())
-            throw new InvalidOperationException("Existing zoom frames have no cache identity; select a fresh output directory.");
+        foreach (var frame in Directory.EnumerateFiles(root, "frame_*.png", SearchOption.AllDirectories))
+        {
+            if (!acceptUnmarkedLocalFrames)
+                throw new InvalidOperationException("Existing zoom frames have no cache identity; select a fresh output directory.");
+            using var image = PngImages.Decode(frame);
+            if (image.Width != size || image.Height != size)
+                throw new InvalidOperationException("Unmarked zoom frames do not match this local renderer.");
+        }
         var temporary = marker + $".{Guid.NewGuid():N}.tmp";
         try
         {

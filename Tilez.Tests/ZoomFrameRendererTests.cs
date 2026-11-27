@@ -57,6 +57,44 @@ public sealed class ZoomFrameRendererTests
     }
 
     [Fact]
+    public async Task In_progress_local_render_claims_an_empty_cache_before_a_paid_render_can_enter()
+    {
+        using var temp = new ZoomDirectory();
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var local = new ZoomFrameRenderer(new BlockingZoomBackend(entered, release));
+        var localTask = Task.Run(() => local.Render(0, 1337, temp.Path));
+        var paidBackend = new RecordingZoomBackend(size: 1024);
+        try
+        {
+            Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
+            Assert.Throws<InvalidOperationException>(() =>
+                new ZoomFrameRenderer(paidBackend, 1024, ZoomCompositionMode.NestedScene,
+                    "openrouter-zoom|model|medium|nested-v3|1024").Render(0, 2048, temp.Path));
+            Assert.Empty(paidBackend.Requests);
+        }
+        finally
+        {
+            release.Set();
+        }
+        Assert.True(File.Exists(await localTask));
+    }
+
+    [Fact]
+    public void Existing_unmarked_local_sequence_is_claimed_and_can_continue()
+    {
+        using var temp = new ZoomDirectory();
+        using var first = new SKBitmap(512, 512);
+        Save(first, ZoomFrameRenderer.FramePath(temp.Path, 1337, 0));
+        var backend = new RecordingZoomBackend();
+
+        new ZoomFrameRenderer(backend).Render(1, 1337, temp.Path);
+
+        Assert.Single(backend.Requests);
+        Assert.Equal("local|FineDetail|512", File.ReadAllText(Path.Combine(temp.Path, ".zoom-cache-identity")));
+    }
+
+    [Fact]
     public void Paid_frame_cache_rejects_unidentified_existing_frames()
     {
         using var temp = new ZoomDirectory();
@@ -282,6 +320,20 @@ public sealed class ZoomFrameRendererTests
             if (throwOnGenerate) throw new InvalidOperationException("Generation failed");
             using var image = new SKBitmap(size, size);
             image.Erase(SKColors.Purple);
+            using var encoded = image.Encode(SKEncodedImageFormat.Png, 100);
+            return encoded.ToArray();
+        }
+    }
+
+    private sealed class BlockingZoomBackend(ManualResetEventSlim entered, ManualResetEventSlim release)
+        : IZoomFrameImageGenerator
+    {
+        public byte[] Generate(ZoomFrameRequest request)
+        {
+            entered.Set();
+            if (!release.Wait(TimeSpan.FromSeconds(10)))
+                throw new TimeoutException("The local render was not released.");
+            using var image = new SKBitmap(request.Size, request.Size);
             using var encoded = image.Encode(SKEncodedImageFormat.Png, 100);
             return encoded.ToArray();
         }
