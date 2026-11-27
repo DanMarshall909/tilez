@@ -6,6 +6,38 @@ namespace Tilez.Tests;
 public sealed class ZoomFrameRendererTests
 {
     [Fact]
+    public void Paid_frame_cache_rejects_a_different_provider_or_model_before_reusing_an_artifact()
+    {
+        using var temp = new ZoomDirectory();
+        var first = new RecordingZoomBackend(size: 1024);
+        var second = new RecordingZoomBackend(size: 1024);
+        var firstRenderer = new ZoomFrameRenderer(first, 1024, ZoomCompositionMode.NestedScene,
+            "openrouter-zoom|openai/gpt-image-2.6-sunburst|medium|nested-v2|1024");
+        var secondRenderer = new ZoomFrameRenderer(second, 1024, ZoomCompositionMode.NestedScene,
+            "openai-zoom|gpt-image-2.6-sunburst|medium|nested-v2|1024");
+
+        firstRenderer.Render(0, 1337, temp.Path);
+
+        Assert.Throws<InvalidOperationException>(() => secondRenderer.Render(0, 1337, temp.Path));
+        Assert.Empty(second.Requests);
+        Assert.Single(first.Requests);
+    }
+
+    [Fact]
+    public void Paid_frame_cache_rejects_unidentified_existing_frames()
+    {
+        using var temp = new ZoomDirectory();
+        using var oldFrame = new SKBitmap(1024, 1024);
+        Save(oldFrame, ZoomFrameRenderer.FramePath(temp.Path, 1337, 0));
+        var backend = new RecordingZoomBackend(size: 1024);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            new ZoomFrameRenderer(backend, 1024, ZoomCompositionMode.NestedScene, "openai|model|medium")
+                .Render(0, 1337, temp.Path));
+        Assert.Empty(backend.Requests);
+    }
+
+    [Fact]
     public void High_resolution_zoom_keeps_every_source_and_output_pixel_at_1024()
     {
         using var temp = new ZoomDirectory();

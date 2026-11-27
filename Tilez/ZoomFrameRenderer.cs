@@ -17,7 +17,8 @@ public enum ZoomCompositionMode { FineDetail, NestedScene }
 public sealed class ZoomFrameRenderer(
     IZoomFrameImageGenerator backend,
     int renderSize = ZoomFrameRenderer.RenderSize,
-    ZoomCompositionMode compositionMode = ZoomCompositionMode.FineDetail)
+    ZoomCompositionMode compositionMode = ZoomCompositionMode.FineDetail,
+    string? cacheIdentity = null)
 {
     public const int RenderSize = 512;
     public const int DisplaySize = 256;
@@ -37,6 +38,7 @@ public sealed class ZoomFrameRenderer(
     {
         var path = FramePath(outputRoot, seed, depth);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        EnsureCacheIdentity(outputRoot, cacheIdentity);
         using var frameLock = AcquireLock(path + ".lock");
         if (IsAccepted(path, _renderSize)) return path;
 
@@ -197,6 +199,31 @@ public sealed class ZoomFrameRenderer(
         catch (InvalidDataException)
         {
             return false;
+        }
+    }
+
+    private static void EnsureCacheIdentity(string root, string? identity)
+    {
+        if (identity is null) return;
+        using var identityLock = AcquireLock(Path.Combine(root, ".zoom-cache-identity.lock"));
+        var marker = Path.Combine(root, ".zoom-cache-identity");
+        if (File.Exists(marker))
+        {
+            if (File.ReadAllText(marker) != identity)
+                throw new InvalidOperationException("This zoom output directory belongs to a different backend, model or generation setting.");
+            return;
+        }
+        if (Directory.EnumerateFiles(root, "frame_*.png", SearchOption.AllDirectories).Any())
+            throw new InvalidOperationException("Existing zoom frames have no cache identity; select a fresh output directory.");
+        var temporary = marker + $".{Guid.NewGuid():N}.tmp";
+        try
+        {
+            File.WriteAllText(temporary, identity);
+            File.Move(temporary, marker);
+        }
+        finally
+        {
+            if (File.Exists(temporary)) File.Delete(temporary);
         }
     }
 

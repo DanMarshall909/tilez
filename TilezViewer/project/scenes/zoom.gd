@@ -137,7 +137,7 @@ func _ensure_prefetch() -> void:
 	var wanted := planned_prefetch_depth()
 	if (max_depth >= 0 and wanted > max_depth) or _load_cached_frame(wanted):
 		return
-	if attempts.get(wanted, 0) >= 3:
+	if attempts.get(wanted, 0) >= max_attempts():
 		return
 	active_pid = OS.create_process("dotnet", build_generation_arguments(wanted))
 	if active_pid <= 0:
@@ -151,6 +151,9 @@ func _ensure_prefetch() -> void:
 
 func planned_prefetch_depth() -> int:
 	return 0 if current_depth < 0 else current_depth + 1
+
+func max_attempts() -> int:
+	return 1 if image_backend == "openai-zoom" or image_backend == "openrouter-zoom" else 3
 
 func build_generation_arguments(depth: int) -> PackedStringArray:
 	var dll := ProjectSettings.globalize_path("res://../../Tilez/bin/Debug/net10.0/Tilez.dll")
@@ -176,10 +179,10 @@ func _update_status() -> void:
 	if status_label == null:
 		return
 	var needed := 0 if current_depth < 0 else current_depth + 1
-	if active_depth < 0 and not frames.has(needed) and attempts.get(needed, 0) >= 3:
+	if active_depth < 0 and not frames.has(needed) and attempts.get(needed, 0) >= max_attempts():
 		status_label.text = "Generation failed at depth %d · restart to retry" % needed
 	elif current_depth < 0:
-		status_label.text = "Generating first 512×512 frame…"
+		status_label.text = "Generating first %d×%d frame…" % [render_size, render_size]
 	elif max_depth >= 0 and current_depth >= max_depth:
 		status_label.text = "Center zoom complete · depth %d" % current_depth
 	elif active_depth >= 0:

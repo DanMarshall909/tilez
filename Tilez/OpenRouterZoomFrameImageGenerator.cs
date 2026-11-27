@@ -11,6 +11,7 @@ public sealed class OpenRouterZoomFrameImageGenerator : IZoomFrameImageGenerator
 {
     private readonly OpenRouterZoomImageOptions _options;
     private readonly HttpClient _client;
+    public string CacheIdentity => $"openrouter-zoom|{_options.Model}|{_options.Quality}|nested-v2|1024";
 
     public OpenRouterZoomFrameImageGenerator(OpenRouterZoomImageOptions options, HttpClient? client = null)
     {

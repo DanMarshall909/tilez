@@ -23,6 +23,23 @@ func _run() -> void:
 		push_error("OpenAI zoom discarded the model's extra resolution")
 		quit(1)
 		return
+	if scene.max_attempts() != 1:
+		push_error("A failed paid generation could be retried automatically")
+		quit(1)
+		return
+	scene.attempts[0] = 1
+	scene._update_status()
+	scene._ensure_prefetch()
+	if scene.active_pid > 0 or not scene.status_label.text.contains("failed at depth 0"):
+		push_error("The paid route relaunched an ambiguous failed request")
+		quit(1)
+		return
+	scene.attempts.clear()
+	scene._update_status()
+	if not scene.status_label.text.contains("1024×1024"):
+		push_error("Paid frame status reported the wrong resolution")
+		quit(1)
+		return
 	var arguments: PackedStringArray = scene.build_generation_arguments(0)
 	if arguments.find("openai-zoom") < 0 or arguments.find(expected_root) < 0:
 		push_error("The viewer did not request the OpenAI zoom backend and its own cache")

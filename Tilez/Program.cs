@@ -23,8 +23,14 @@ try
         var depth = GetInt(args, "--depth", 0);
         var seed = GetInt(args, "--seed", 1337);
         var highResolution = zoomBackend is OpenAiZoomFrameImageGenerator or OpenRouterZoomFrameImageGenerator;
+        var cacheIdentity = zoomBackend switch
+        {
+            OpenAiZoomFrameImageGenerator direct => direct.CacheIdentity,
+            OpenRouterZoomFrameImageGenerator routed => routed.CacheIdentity,
+            _ => null
+        };
         var path = new ZoomFrameRenderer(zoomBackend, highResolution ? 1024 : 512,
-            highResolution ? ZoomCompositionMode.NestedScene : ZoomCompositionMode.FineDetail)
+            highResolution ? ZoomCompositionMode.NestedScene : ZoomCompositionMode.FineDetail, cacheIdentity)
             .Render(depth, seed, outputRoot);
         Console.WriteLine($"Zoom frame {depth} ready: {path}");
         logger.Information("Tilez CLI completed successfully");
