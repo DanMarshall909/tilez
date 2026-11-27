@@ -202,6 +202,74 @@ public sealed class RegionRendererTests
         Assert.Equal((768, 576), (mask.Width, mask.Height));
     }
 
+    [Fact]
+    public void Region_request_describes_each_position_with_coordinate_specific_features()
+    {
+        using var first = new TempRegion();
+        using var second = new TempRegion();
+        var backend = new RecordingRegionBackend(SKColors.Blue);
+        var renderer = new RegionRenderer(backend, 128);
+        var authoredBiomes = new List<string>();
+        for (var x = 0; x < 3; x++)
+        for (var y = 0; y < 3; y++)
+        {
+            var biome = $"biome {x} {y}";
+            authoredBiomes.Add(biome);
+            var features = new PromptFeatures(biome, "tranquil",
+                new Dictionary<string, float> { ["roots"] = 1 },
+                new Dictionary<string, float> { ["stone"] = 1 },
+                new Dictionary<string, float> { ["teal"] = 1 });
+            TilePersistence.SaveMetadata(new WorldTile(new TileCoordinate(x, y), 1337, features, "authored", ""), first.Path);
+        }
+
+        renderer.Render(0, 0, 1337, first.Path);
+        renderer.Render(1, 0, 1337, second.Path);
+
+        Assert.Equal(2, backend.Requests.Count);
+        foreach (var biome in authoredBiomes) Assert.Contains(biome, backend.Requests[0].Prompt);
+        Assert.NotEqual(backend.Requests[0].Prompt, backend.Requests[1].Prompt);
+        Assert.True(File.Exists(System.IO.Path.Combine(first.Path, "metadata", "tile_0_0_1337.json")));
+    }
+
+    [Fact]
+    public void Authored_neighbor_changes_the_expansion_request_without_replacing_metadata()
+    {
+        using var first = new TempRegion();
+        using var second = new TempRegion();
+        var backend = new RecordingRegionBackend(SKColors.Blue);
+        var renderer = new RegionRenderer(backend, 128);
+        var coordinate = new TileCoordinate(2, 0);
+        var authoredBiome = new[] { "fungal bloom", "glass desert" };
+        var roots = new[] { first.Path, second.Path };
+        var originals = new byte[2][];
+        for (var i = 0; i < roots.Length; i++)
+        {
+            var root = roots[i];
+            var features = new PromptFeatures(authoredBiome[i], "tranquil",
+                new Dictionary<string, float> { ["roots"] = 1 },
+                new Dictionary<string, float> { ["stone"] = 1 },
+                new Dictionary<string, float> { ["teal"] = 1 });
+            var metadataPath = TilePersistence.SaveMetadata(new WorldTile(coordinate, 1337, features, "authored", ""), root);
+            originals[i] = File.ReadAllBytes(metadataPath);
+            var acceptedPath = RegionRenderer.TilePath(root, 2, 0, 1337, 128);
+            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(acceptedPath)!);
+            using var accepted = new SKBitmap(128, 128);
+            accepted.Erase(SKColors.Green);
+            using var stream = File.Create(acceptedPath);
+            Assert.True(accepted.Encode(stream, SKEncodedImageFormat.Png, 100));
+        }
+
+        renderer.Render(1, 0, 1337, first.Path);
+        renderer.Render(1, 0, 1337, second.Path);
+
+        Assert.Contains("fungal bloom", backend.Requests[0].Prompt);
+        Assert.Contains("glass desert", backend.Requests[1].Prompt);
+        Assert.NotEqual(backend.Requests[0].Prompt, backend.Requests[1].Prompt);
+        for (var i = 0; i < roots.Length; i++)
+            Assert.Equal(originals[i], File.ReadAllBytes(System.IO.Path.Combine(roots[i], "metadata", "tile_2_0_1337.json")));
+        Assert.Equal(2, backend.Requests.Count);
+    }
+
     [Theory]
     [InlineData(128)]
     [InlineData(192)]

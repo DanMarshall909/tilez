@@ -16,6 +16,11 @@ func _run() -> void:
 		push_error("The initial view did not prioritize the first region")
 		quit(1)
 		return
+	scene.jobs_started = scene.job_limit
+	if not scene.render_limit_reached():
+		push_error("The paid backend lost its request cap")
+		quit(1)
+		return
 	scene.pending.clear()
 	scene.queued.clear()
 	scene.camera.position = Vector2(-128, -128)

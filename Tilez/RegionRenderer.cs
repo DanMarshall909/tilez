@@ -63,9 +63,8 @@ public sealed class RegionRenderer(IRegionImageGenerator backend, int cellSize =
         {
             var layout = SelectLayout(originX, originY, seed, outputRoot);
             var (reference, mask) = CreateReference(layout, seed, outputRoot, cellSize);
-            var prompt = reference is null
-                ? "Seamless top-down illustrated fantasy landscape with coherent terrain, roads and structures. The artwork fills the canvas and continues beyond every edge. No frame, margins, paper, grid lines, tile boundaries, labels or panels."
-                : "Outpaint only the pale blank area of this seamless top-down illustrated fantasy landscape. Extend the existing roads, structures, terrain, palette and lighting naturally into the blank area. Keep the existing artwork in its exact position. The artwork fills the canvas and continues beyond every edge. No frame, margins, paper, grid lines, tile boundaries, labels or panels.";
+            var prompt = RegionPromptComposer.Compose(layout.OriginX, layout.OriginY,
+                layout.Columns, layout.Rows, seed, outputRoot, reference is not null);
             var bytes = backend.Generate(new RegionImageRequest(prompt, RegionSeed(seed, regionX, regionY),
                 layout.AspectRatio, reference, mask, cellSize));
             using var generated = PngImages.Decode(bytes);

@@ -173,7 +173,7 @@ try
             var regionY = GetInt(args, "--region-y", 0);
             var seed = GetInt(args, "--seed", 1337);
             var configuredCellSize = int.TryParse(Environment.GetEnvironmentVariable("TILEZ_LOCAL_CELL_SIZE"), out var size)
-                ? size : 192;
+                ? size : 128;
             var cellSize = imageGenerator is ComfyUiTileImageGenerator
                 ? GetInt(args, "--region-cell-size", configuredCellSize) : 256;
             new RegionRenderer(regionBackend, cellSize).Render(regionX, regionY, seed, outputRoot);

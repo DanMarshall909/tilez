@@ -17,7 +17,7 @@ var image_model: String
 var job_limit := 9
 var jobs_started := 0
 var ready_to_render := false
-var zoom_level := 2.5
+var zoom_level := 3.0
 var sprites: Dictionary = {}
 var ready_tiles: Dictionary = {}
 var displayed_detail: Dictionary = {}
@@ -62,7 +62,7 @@ func _ready() -> void:
 	var cache_name := image_backend
 	if image_backend != "procedural":
 		if uses_regions():
-			cache_name += "-regions-v4" if image_backend == "comfyui" else "-regions-v3"
+			cache_name += "-regions-v6" if image_backend == "comfyui" else "-regions-v5"
 		var model_identity := image_model
 		if image_backend == "comfyui":
 			model_identity += ":" + OS.get_environment("TILEZ_COMFYUI_TEXT_ENCODER") + ":" + OS.get_environment("TILEZ_COMFYUI_VAE") + ":" + OS.get_environment("TILEZ_LOCAL_CELL_SIZE")
@@ -179,6 +179,9 @@ func tile_key(coord: Vector2i, detail: int) -> String:
 func uses_regions() -> bool:
 	return image_backend in ["openrouter", "comfyui"]
 
+func render_limit_reached() -> bool:
+	return image_backend == "openrouter" and jobs_started >= job_limit
+
 func region_marker_path(coord: Vector2i) -> String:
 	var region := Vector2i(floori(float(coord.x) / REGION_SIZE), floori(float(coord.y) / REGION_SIZE))
 	return output_root.path_join("regions/region_%d_%d_%d.complete" % [region.x, region.y, WORLD_SEED])
@@ -206,7 +209,7 @@ func load_generated_tile(coord: Vector2i, detail: int, display: bool = true) -> 
 func start_next_job() -> void:
 	if worker_busy or pending.is_empty():
 		return
-	if uses_regions() and jobs_started >= job_limit:
+	if render_limit_reached():
 		label.text = "%d render jobs started. Press R for another batch, or raise TILEZ_MAX_RENDER_JOBS." % job_limit
 		return
 	var job: Vector3i = pending.pop_front()

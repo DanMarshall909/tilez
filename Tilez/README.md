@@ -12,7 +12,7 @@ The CLI's default backend remains procedural for offline experiments. OpenRouter
 
 To render a shared 3×3 OpenRouter region in one image request, use `render-region --region-x 0 --region-y 0 --image-backend openrouter`. Adjacent regions use existing images as a spatial reference. Repeating a completed region reuses the saved tiles.
 
-For the local FLUX.2 Klein model, start ComfyUI on `127.0.0.1:8188` and run `render-region --region-x 0 --region-y 0 --image-backend comfyui`. The local backend sends a mask for blank cells and uses no OpenRouter credentials. It defaults to 192 source pixels per tile; set `TILEZ_LOCAL_CELL_SIZE=128` or use `--region-cell-size 128` to reduce the generation resolution. The repository root's `./run-local.sh` starts the local server and viewer together.
+For the local FLUX.2 Klein model, start ComfyUI on `127.0.0.1:8188` and run `render-region --region-x 0 --region-y 0 --image-backend comfyui`. The local backend sends a mask for blank cells and uses no OpenRouter credentials. It defaults to 128 source pixels per tile; set `TILEZ_LOCAL_CELL_SIZE=192` or use `--region-cell-size 192` for more detail. Each region request describes the semantic features of its individual positions and loads authored metadata when present. The repository root's `./run-local.sh` starts the local server and viewer together.
 
 ## Commands
 

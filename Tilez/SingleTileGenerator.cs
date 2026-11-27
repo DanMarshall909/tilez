@@ -59,6 +59,15 @@ public sealed class SingleTileGenerator
 
     public WorldTile Generate(TileCoordinate coordinate, int seed, string outputRoot)
     {
+        var features = CreateFeatures(coordinate, seed);
+        var tileSummary = BuildSummary(features);
+        var imagePath = GenerateImage(coordinate, seed, features, outputRoot, 64, false, "base");
+
+        return new WorldTile(coordinate, seed, features, tileSummary, imagePath);
+    }
+
+    public static PromptFeatures CreateFeatures(TileCoordinate coordinate, int seed)
+    {
         var random = new Random(CombineSeed(seed, coordinate));
 
         var biome = Biomes[random.Next(Biomes.Length)];
@@ -68,17 +77,12 @@ public sealed class SingleTileGenerator
         var materialWeights = BuildWeights(Materials, random);
         var paletteWeights = BuildWeights(Palettes, random);
 
-        var features = new PromptFeatures(
+        return new PromptFeatures(
             biome,
             mood,
             motifWeights,
             materialWeights,
             paletteWeights);
-
-        var tileSummary = BuildSummary(features);
-        var imagePath = GenerateImage(coordinate, seed, features, outputRoot, 64, false, "base");
-
-        return new WorldTile(coordinate, seed, features, tileSummary, imagePath);
     }
 
     public WorldTile GenerateFromFeatures(
