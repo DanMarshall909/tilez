@@ -4,14 +4,23 @@ func _initialize() -> void:
 	call_deferred("_run")
 
 func _run() -> void:
+	var custom_root := ProjectSettings.globalize_path("res://../../generated/zoom-custom-cache-test")
+	var legacy_frame := custom_root.path_join("seed_1337/frames/frame_0000.png")
+	DirAccess.make_dir_recursive_absolute(legacy_frame.get_base_dir())
+	var legacy_image := Image.create(512, 512, false, Image.FORMAT_RGBA8)
+	legacy_image.fill(Color.GREEN)
+	legacy_image.save_png(legacy_frame)
+	OS.set_environment("TILEZ_ZOOM_OUTPUT_ROOT", custom_root)
 	var scene = load("res://scenes/zoom.tscn").instantiate()
 	scene.auto_generate = false
 	root.add_child(scene)
 	await process_frame
-	if not scene.output_root.ends_with("center-zoom-v3"):
+	OS.set_environment("TILEZ_ZOOM_OUTPUT_ROOT", "")
+	if scene.output_root != custom_root.path_join("center-zoom-v3") or scene._load_cached_frame(0):
 		push_error("New zoom settings reused the old accepted-frame cache")
 		quit(1)
 		return
+	DirAccess.remove_absolute(legacy_frame)
 	scene.attempts[0] = 3
 	scene._update_status()
 	if not scene.status_label.text.contains("failed at depth 0"):

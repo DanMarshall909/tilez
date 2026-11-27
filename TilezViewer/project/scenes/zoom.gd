@@ -29,9 +29,8 @@ func _exit_tree() -> void:
 
 func _ready() -> void:
 	if output_root.is_empty():
-		output_root = OS.get_environment("TILEZ_ZOOM_OUTPUT_ROOT")
-	if output_root.is_empty():
-		output_root = ProjectSettings.globalize_path("res://../../generated/center-zoom-v3")
+		var custom_root := OS.get_environment("TILEZ_ZOOM_OUTPUT_ROOT")
+		output_root = custom_root.path_join("center-zoom-v3") if not custom_root.is_empty() else ProjectSettings.globalize_path("res://../../generated/center-zoom-v3")
 	if OS.has_environment("TILEZ_ZOOM_MAX_DEPTH"):
 		max_depth = int(OS.get_environment("TILEZ_ZOOM_MAX_DEPTH"))
 	get_viewport().size_changed.connect(_update_display)
