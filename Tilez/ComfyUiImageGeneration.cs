@@ -77,14 +77,23 @@ public sealed class ComfyUiTileImageGenerator : ITileImageGenerator, IRegionImag
         if (request.Size != ZoomFrameRenderer.RenderSize)
             throw new ArgumentOutOfRangeException(nameof(request), "Zoom frames must be 512 pixels square.");
         string? referenceName = null;
+        string? maskName = null;
         if (request.ReferencePng is not null)
         {
+            if (request.MaskPng is null)
+                throw new ArgumentException("Zoom refinement requires a mask for the inner half.", nameof(request));
             using var reference = PngImages.Decode(request.ReferencePng);
+            using var mask = PngImages.Decode(request.MaskPng);
             if (reference.Width != request.Size || reference.Height != request.Size)
                 throw new InvalidDataException("The zoom reference must be 512 pixels square.");
+            if (mask.Width != request.Size || mask.Height != request.Size)
+                throw new InvalidDataException("The zoom mask must be 512 pixels square.");
             referenceName = UploadPng(request.ReferencePng);
+            maskName = UploadPng(request.MaskPng);
         }
-        var workflow = BuildZoomWorkflow(request, referenceName);
+        else if (request.MaskPng is not null)
+            throw new ArgumentException("A zoom mask requires a reference image.", nameof(request));
+        var workflow = BuildZoomWorkflow(request, referenceName, maskName);
         return RunWorkflow(workflow);
     }
 
@@ -209,7 +218,7 @@ public sealed class ComfyUiTileImageGenerator : ITileImageGenerator, IRegionImag
         return nodes;
     }
 
-    private Dictionary<string, object> BuildZoomWorkflow(ZoomFrameRequest request, string? referenceName)
+    private Dictionary<string, object> BuildZoomWorkflow(ZoomFrameRequest request, string? referenceName, string? maskName)
     {
         static object[] Ref(string id, int output = 0) => [id, output];
         static object Node(string type, object inputs) => new { class_type = type, inputs };
@@ -223,13 +232,18 @@ public sealed class ComfyUiTileImageGenerator : ITileImageGenerator, IRegionImag
         nodes["15"] = Node("VAEEncode", new { pixels = Ref("14"), vae = Ref("3") });
         nodes["16"] = Node("ReferenceLatent", new { conditioning = Ref("4"), latent = Ref("15") });
         nodes["17"] = Node("ReferenceLatent", new { conditioning = Ref("5"), latent = Ref("15") });
+        nodes["20"] = Node("LoadImageMask", new { image = maskName, channel = "red" });
+        nodes["21"] = Node("VAEEncodeForInpaint", new
+        {
+            pixels = Ref("14"), vae = Ref("3"), mask = Ref("20"), grow_mask_by = 8
+        });
         nodes["8"] = Node("Flux2Scheduler", new { steps = 5, width = request.Size, height = request.Size });
-        nodes["19"] = Node("SplitSigmasDenoise", new { sigmas = Ref("8"), denoise = 0.8 });
+        nodes["19"] = Node("SplitSigmasDenoise", new { sigmas = Ref("8"), denoise = 1.0 });
         nodes["10"] = Node("CFGGuider", new { model = Ref("1"), positive = Ref("16"), negative = Ref("17"), cfg = 1.0 });
         nodes["11"] = Node("SamplerCustomAdvanced", new
         {
             noise = Ref("6"), guider = Ref("10"), sampler = Ref("7"),
-            sigmas = Ref("19", 1), latent_image = Ref("15")
+            sigmas = Ref("19", 1), latent_image = Ref("21")
         });
         return nodes;
     }

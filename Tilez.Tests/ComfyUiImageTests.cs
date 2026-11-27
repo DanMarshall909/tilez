@@ -72,9 +72,12 @@ public sealed class ComfyUiImageTests
             new Uri("http://127.0.0.1:8188/"), "flux-2-klein-4b-fp8.safetensors",
             "qwen_3_4b.safetensors", "flux2-vae.safetensors"), client);
 
-        generator.Generate(new ZoomFrameRequest("Zoom to the center", 42, withReference ? png : null));
+        generator.Generate(new ZoomFrameRequest("Zoom to the center", 42, withReference ? png : null)
+        {
+            MaskPng = withReference ? png : null
+        });
 
-        Assert.Equal(withReference ? 1 : 0, handler.UploadCount);
+        Assert.Equal(withReference ? 2 : 0, handler.UploadCount);
         using var prompt = JsonDocument.Parse(handler.PromptBody!);
         var nodes = prompt.RootElement.GetProperty("prompt").EnumerateObject()
             .ToDictionary(node => node.Name, node => node.Value);
@@ -84,15 +87,15 @@ public sealed class ComfyUiImageTests
         Assert.Equal(withReference ? 5 : 4, scheduler.GetProperty("inputs").GetProperty("steps").GetInt32());
         Assert.Equal(withReference, nodes.Values.Any(node => node.GetProperty("class_type").GetString() == "VAEEncode"));
         Assert.Equal(withReference, nodes.Values.Any(node => node.GetProperty("class_type").GetString() == "SplitSigmasDenoise"));
-        Assert.DoesNotContain(nodes.Values, node => node.GetProperty("class_type").GetString() == "VAEEncodeForInpaint");
+        Assert.Equal(withReference, nodes.Values.Any(node => node.GetProperty("class_type").GetString() == "VAEEncodeForInpaint"));
         var sampler = nodes.Values.Single(node => node.GetProperty("class_type").GetString() == "SamplerCustomAdvanced");
         var latentId = sampler.GetProperty("inputs").GetProperty("latent_image")[0].GetString()!;
-        Assert.Equal(withReference ? "VAEEncode" : "EmptyFlux2LatentImage",
+        Assert.Equal(withReference ? "VAEEncodeForInpaint" : "EmptyFlux2LatentImage",
             nodes[latentId].GetProperty("class_type").GetString());
         if (withReference)
         {
             var split = nodes.Values.Single(node => node.GetProperty("class_type").GetString() == "SplitSigmasDenoise");
-            Assert.Equal(0.8, split.GetProperty("inputs").GetProperty("denoise").GetDouble());
+            Assert.Equal(1.0, split.GetProperty("inputs").GetProperty("denoise").GetDouble());
         }
     }
 

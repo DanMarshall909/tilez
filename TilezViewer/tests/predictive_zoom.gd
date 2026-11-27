@@ -5,7 +5,7 @@ func _initialize() -> void:
 
 func _run() -> void:
 	var custom_root := ProjectSettings.globalize_path("res://../../generated/zoom-custom-cache-test")
-	var legacy_frame := custom_root.path_join("seed_1337/frames/frame_0000.png")
+	var legacy_frame := custom_root.path_join("center-zoom-v3/seed_1337/frames/frame_0000.png")
 	DirAccess.make_dir_recursive_absolute(legacy_frame.get_base_dir())
 	var legacy_image := Image.create(512, 512, false, Image.FORMAT_RGBA8)
 	legacy_image.fill(Color.GREEN)
@@ -16,7 +16,7 @@ func _run() -> void:
 	root.add_child(scene)
 	await process_frame
 	OS.set_environment("TILEZ_ZOOM_OUTPUT_ROOT", "")
-	if scene.output_root != custom_root.path_join("center-zoom-v3") or scene._load_cached_frame(0):
+	if scene.output_root != custom_root.path_join("center-zoom-v4") or scene._load_cached_frame(0):
 		push_error("New zoom settings reused the old accepted-frame cache")
 		quit(1)
 		return
@@ -35,8 +35,8 @@ func _run() -> void:
 		push_error("Wrong initial frame or render/display size")
 		quit(1)
 		return
-	if scene.source_crop_size != 410:
-		push_error("Each step must keep most of the previous composition")
+	if scene.source_crop_size != 256:
+		push_error("Each step must zoom into the redrawn inner half")
 		quit(1)
 		return
 	if scene.max_depth != -1:
@@ -69,8 +69,24 @@ func _run() -> void:
 		push_error("Zoom did not advance toward the prepared frame")
 		quit(1)
 		return
-	if scene.planned_prefetch_depth() != 2:
-		push_error("The frame after next was not scheduled during the current transition")
+	if not scene.incoming_sprite.visible or scene.incoming_sprite.modulate.a <= 0.0:
+		push_error("The inner detail did not begin appearing during zoom")
+		quit(1)
+		return
+	var incoming_atlas := scene.incoming_sprite.texture as AtlasTexture
+	if incoming_atlas == null or incoming_atlas.region != Rect2(128, 128, 256, 256):
+		push_error("The reveal included pixels outside the redrawn inner half")
+		quit(1)
+		return
+	var aligned_scale: float = scene.display_sprite.scale.x * 0.5
+	if absf(scene.incoming_sprite.scale.x - aligned_scale) > 0.001:
+		push_error("The inner detail did not grow from the same source pixels")
+		quit(1)
+		return
+	var early_alpha: float = scene.incoming_sprite.modulate.a
+	var early_scale: float = scene.incoming_sprite.scale.x
+	if scene.planned_prefetch_depth() != 1:
+		push_error("Generation must use the current front buffer")
 		quit(1)
 		return
 	var atlas := scene.display_sprite.texture as AtlasTexture
@@ -79,13 +95,17 @@ func _run() -> void:
 		quit(1)
 		return
 	scene.step_zoom(2.5)
-	if not scene.incoming_sprite.visible or scene.incoming_sprite.modulate.a <= 0.0:
-		push_error("Prepared frame did not blend into the old image")
+	if not scene.incoming_sprite.visible or scene.incoming_sprite.modulate.a <= early_alpha or scene.incoming_sprite.scale.x <= early_scale:
+		push_error("The inner detail did not grow and emerge through the zoom")
 		quit(1)
 		return
 	scene.step_zoom(10.0)
 	if scene.current_depth != 1 or scene.zoom_progress != 0.0 or scene.frames.has(0):
 		push_error("The prepared frame was not swapped in at the transition")
+		quit(1)
+		return
+	if scene.planned_prefetch_depth() != 2 or scene.frames.size() != 1:
+		push_error("The buffers were not swapped before scheduling another frame")
 		quit(1)
 		return
 	print("Predictive center zoom passed")

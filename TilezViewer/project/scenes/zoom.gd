@@ -6,7 +6,7 @@ extends Node2D
 
 const render_size := 512
 const display_size := 256
-const source_crop_size := 410
+const source_crop_size := 256
 const world_seed := 1337
 
 @onready var display_sprite: Sprite2D = $Image
@@ -30,7 +30,7 @@ func _exit_tree() -> void:
 func _ready() -> void:
 	if output_root.is_empty():
 		var custom_root := OS.get_environment("TILEZ_ZOOM_OUTPUT_ROOT")
-		output_root = custom_root.path_join("center-zoom-v3") if not custom_root.is_empty() else ProjectSettings.globalize_path("res://../../generated/center-zoom-v3")
+		output_root = custom_root.path_join("center-zoom-v4") if not custom_root.is_empty() else ProjectSettings.globalize_path("res://../../generated/center-zoom-v4")
 	if OS.has_environment("TILEZ_ZOOM_MAX_DEPTH"):
 		max_depth = int(OS.get_environment("TILEZ_ZOOM_MAX_DEPTH"))
 	get_viewport().size_changed.connect(_update_display)
@@ -84,12 +84,15 @@ func _update_display() -> void:
 	display_sprite.position = viewport_size / 2.0
 	display_sprite.scale = Vector2.ONE * (float(display_size) / extent) * pixel_scale
 	display_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	incoming_sprite.visible = frames.has(current_depth + 1) and zoom_progress > 0.8
+	incoming_sprite.visible = frames.has(current_depth + 1) and zoom_progress > 0.0
 	if incoming_sprite.visible:
-		incoming_sprite.texture = frames[current_depth + 1]
+		var detail_atlas := AtlasTexture.new()
+		detail_atlas.atlas = frames[current_depth + 1]
+		detail_atlas.region = Rect2(128, 128, 256, 256)
+		incoming_sprite.texture = detail_atlas
 		incoming_sprite.position = viewport_size / 2.0
-		incoming_sprite.scale = Vector2.ONE * 0.5 * pixel_scale
-		incoming_sprite.modulate.a = clampf((zoom_progress - 0.8) / 0.2, 0.0, 1.0)
+		incoming_sprite.scale = display_sprite.scale * 0.5
+		incoming_sprite.modulate.a = zoom_progress * zoom_progress * (3.0 - 2.0 * zoom_progress)
 		incoming_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 
 func _frame_path(depth: int) -> String:
@@ -128,10 +131,7 @@ func _ensure_prefetch() -> void:
 	_update_status()
 
 func planned_prefetch_depth() -> int:
-	var wanted := 0 if current_depth < 0 else current_depth + 1
-	if frames.has(wanted) and zoom_progress > 0.0 and (max_depth < 0 or wanted < max_depth):
-		wanted += 1
-	return wanted
+	return 0 if current_depth < 0 else current_depth + 1
 
 func _poll_generation() -> void:
 	if active_pid <= 0 or OS.is_process_running(active_pid):

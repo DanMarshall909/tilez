@@ -13,10 +13,10 @@ public sealed class ZoomFrameRendererTests
         var renderer = new ZoomFrameRenderer(backend);
         using var first = new SKBitmap(512, 512);
         first.Erase(SKColors.Black);
-        first.SetPixel(51, 51, SKColors.Red);
-        first.SetPixel(460, 51, SKColors.Green);
-        first.SetPixel(51, 460, SKColors.Blue);
-        first.SetPixel(460, 460, SKColors.Yellow);
+        first.SetPixel(128, 128, SKColors.Red);
+        first.SetPixel(383, 128, SKColors.Green);
+        first.SetPixel(128, 383, SKColors.Blue);
+        first.SetPixel(383, 383, SKColors.Yellow);
         Save(first, ZoomFrameRenderer.FramePath(temp.Path, 1337, 0));
 
         var nextPath = renderer.Render(1, 1337, temp.Path);
@@ -28,33 +28,62 @@ public sealed class ZoomFrameRendererTests
         using var reference = SKBitmap.Decode(backend.Requests[0].ReferencePng);
         Assert.NotNull(reference);
         Assert.Equal((512, 512), (reference.Width, reference.Height));
-        Assert.True(reference.GetPixel(0, 0).Red > 150);
-        Assert.True(reference.GetPixel(511, 0).Green > 80);
-        Assert.True(reference.GetPixel(0, 511).Blue > 150);
-        Assert.True(reference.GetPixel(511, 511).Red > 150 && reference.GetPixel(511, 511).Green > 150);
+        Assert.Equal(SKColors.Red, reference.GetPixel(0, 0));
+        Assert.Equal(SKColors.Green, reference.GetPixel(511, 0));
+        Assert.Equal(SKColors.Blue, reference.GetPixel(0, 511));
+        Assert.Equal(SKColors.Yellow, reference.GetPixel(511, 511));
+        using var mask = SKBitmap.Decode(backend.Requests[0].MaskPng);
+        Assert.NotNull(mask);
+        Assert.Equal(SKColors.Black, mask.GetPixel(0, 0));
+        Assert.Equal(SKColors.White, mask.GetPixel(256, 256));
         using var saved = SKBitmap.Decode(nextPath);
         Assert.NotNull(saved);
         Assert.Equal((512, 512), (saved.Width, saved.Height));
+        Assert.Equal(SKColors.Red, saved.GetPixel(0, 0));
+        Assert.InRange(saved.GetPixel(256, 256).Red, (byte)50, (byte)80);
+        Assert.InRange(saved.GetPixel(128, 256).Red, (byte)1, (byte)127);
+        for (var y = 0; y < 512; y++)
+            for (var x = 0; x < 512; x++)
+                if (x < 128 || x >= 384 || y < 128 || y >= 384)
+                    Assert.Equal(reference.GetPixel(x, y), saved.GetPixel(x, y));
     }
 
     [Fact]
-    public void Enlarged_reference_softens_hard_pixel_steps_before_diffusion()
+    public void Each_source_pixel_expands_to_a_two_by_two_patch_before_the_center_is_redrawn()
     {
         using var temp = new ZoomDirectory();
         var backend = new RecordingZoomBackend();
         using var first = new SKBitmap(512, 512);
         first.Erase(SKColors.Black);
-        for (var y = 0; y < 512; y++)
-            for (var x = 256; x < 512; x++)
-                first.SetPixel(x, y, SKColors.White);
+        first.SetPixel(128, 128, SKColors.White);
         Save(first, ZoomFrameRenderer.FramePath(temp.Path, 1337, 0));
 
         new ZoomFrameRenderer(backend).Render(1, 1337, temp.Path);
 
         using var reference = SKBitmap.Decode(backend.Requests[0].ReferencePng);
         Assert.NotNull(reference);
-        Assert.Contains(Enumerable.Range(252, 8), x =>
-            reference.GetPixel(x, 256).Red is > 16 and < 239);
+        Assert.Equal(SKColors.White, reference.GetPixel(0, 0));
+        Assert.Equal(SKColors.White, reference.GetPixel(1, 0));
+        Assert.Equal(SKColors.White, reference.GetPixel(0, 1));
+        Assert.Equal(SKColors.White, reference.GetPixel(1, 1));
+        Assert.Equal(SKColors.Black, reference.GetPixel(2, 0));
+    }
+
+    [Fact]
+    public void Inner_half_reveals_small_detail_without_replacing_the_source_colour()
+    {
+        using var temp = new ZoomDirectory();
+        using var first = new SKBitmap(512, 512);
+        first.Erase(new SKColor(128, 128, 128));
+        Save(first, ZoomFrameRenderer.FramePath(temp.Path, 1337, 0));
+
+        var next = new ZoomFrameRenderer(new CheckerDetailBackend()).Render(1, 1337, temp.Path);
+
+        using var image = SKBitmap.Decode(next);
+        Assert.NotNull(image);
+        Assert.Equal(new SKColor(128, 128, 128), image.GetPixel(10, 10));
+        Assert.InRange(image.GetPixel(256, 256).Red, (byte)80, (byte)180);
+        Assert.True(Math.Abs(image.GetPixel(256, 256).Red - image.GetPixel(260, 256).Red) > 30);
     }
 
     [Fact]
@@ -125,6 +154,22 @@ public sealed class ZoomFrameRendererTests
             if (throwOnGenerate) throw new InvalidOperationException("Generation failed");
             using var image = new SKBitmap(size, size);
             image.Erase(SKColors.Purple);
+            using var encoded = image.Encode(SKEncodedImageFormat.Png, 100);
+            return encoded.ToArray();
+        }
+    }
+
+    private sealed class CheckerDetailBackend : IZoomFrameImageGenerator
+    {
+        public byte[] Generate(ZoomFrameRequest request)
+        {
+            using var image = new SKBitmap(request.Size, request.Size);
+            for (var y = 0; y < request.Size; y++)
+                for (var x = 0; x < request.Size; x++)
+                {
+                    var shade = ((x / 4 + y / 4) & 1) == 0 ? (byte)160 : (byte)96;
+                    image.SetPixel(x, y, new SKColor(shade, shade, shade));
+                }
             using var encoded = image.Encode(SKEncodedImageFormat.Png, 100);
             return encoded.ToArray();
         }

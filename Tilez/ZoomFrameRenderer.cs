@@ -2,7 +2,10 @@ using SkiaSharp;
 
 namespace Tilez;
 
-public sealed record ZoomFrameRequest(string Prompt, int Seed, byte[]? ReferencePng, int Size = 512);
+public sealed record ZoomFrameRequest(string Prompt, int Seed, byte[]? ReferencePng, int Size = 512)
+{
+    public byte[]? MaskPng { get; init; }
+}
 
 public interface IZoomFrameImageGenerator
 {
@@ -13,7 +16,8 @@ public sealed class ZoomFrameRenderer(IZoomFrameImageGenerator backend)
 {
     public const int RenderSize = 512;
     public const int DisplaySize = 256;
-    public const int SourceCropSize = 410;
+    public const int SourceCropSize = 256;
+    public const int InnerDetailSize = 256;
 
     public static string FramePath(string root, int seed, int depth)
     {
@@ -29,6 +33,7 @@ public sealed class ZoomFrameRenderer(IZoomFrameImageGenerator backend)
         if (IsAccepted(path)) return path;
 
         byte[]? reference = null;
+        byte[]? mask = null;
         if (depth > 0)
         {
             var previousPath = FramePath(outputRoot, seed, depth - 1);
@@ -42,17 +47,41 @@ public sealed class ZoomFrameRenderer(IZoomFrameImageGenerator backend)
                 canvas.DrawBitmap(previous,
                     new SKRect(inset, inset, inset + SourceCropSize, inset + SourceCropSize),
                     new SKRect(0, 0, RenderSize, RenderSize),
-                    new SKSamplingOptions(SKCubicResampler.Mitchell));
+                    new SKSamplingOptions(SKFilterMode.Nearest));
             }
             using var encoded = enlargedCenter.Encode(SKEncodedImageFormat.Png, 100)
                 ?? throw new InvalidOperationException("Could not encode the center crop.");
             reference = encoded.ToArray();
+
+            using var detailMask = new SKBitmap(RenderSize, RenderSize);
+            detailMask.Erase(SKColors.Black);
+            using (var canvas = new SKCanvas(detailMask))
+            using (var paint = new SKPaint { Color = SKColors.White, IsAntialias = false })
+            {
+                var detailInset = (RenderSize - InnerDetailSize) / 2;
+                canvas.DrawRect(new SKRect(detailInset, detailInset,
+                    detailInset + InnerDetailSize, detailInset + InnerDetailSize), paint);
+            }
+            using var encodedMask = detailMask.Encode(SKEncodedImageFormat.Png, 100)
+                ?? throw new InvalidOperationException("Could not encode the zoom detail mask.");
+            mask = encodedMask.ToArray();
         }
 
-        var bytes = backend.Generate(new ZoomFrameRequest(PromptFor(depth), FrameSeed(seed, depth), reference));
+        var bytes = backend.Generate(new ZoomFrameRequest(PromptFor(depth), FrameSeed(seed, depth), reference)
+        {
+            MaskPng = mask
+        });
         using var image = PngImages.Decode(bytes);
         if (image.Width != RenderSize || image.Height != RenderSize)
             throw new InvalidDataException($"Zoom frame must be {RenderSize}×{RenderSize} pixels.");
+        if (reference is not null)
+        {
+            using var source = PngImages.Decode(reference);
+            using var composite = ComposeInnerDetail(source, image);
+            using var encoded = composite.Encode(SKEncodedImageFormat.Png, 100)
+                ?? throw new InvalidOperationException("Could not encode the zoom frame.");
+            bytes = encoded.ToArray();
+        }
         var temporary = path + $".{Guid.NewGuid():N}.tmp";
         try
         {
@@ -68,7 +97,48 @@ public sealed class ZoomFrameRenderer(IZoomFrameImageGenerator backend)
 
     private static string PromptFor(int depth) => depth == 0
         ? "A single continuous top-down pixel art fantasy landscape, a mysterious clockwork forest with winding paths, mossy ruins and luminous streams. Crisp deliberate pixel art, coherent lighting, full bleed, no frame, border, panel, text or vignette."
-        : $"Zoom slightly deeper into the exact center of the supplied fantasy landscape. Preserve the positions and shapes of its paths, streams, objects, colours and layout. Add many small, distinct pixel art details at this closer scale: individual stones, moss fronds, leaves, tiny gears and glowing traces. Resolve large flat pixel blocks into finer scene detail. Keep rivers, paths, coastlines and vegetation naturally irregular rather than rectangular. The supplied image is the composition to refine, not a new scene. Sharp deliberate small details, full bleed, no frame, border, panel, text or vignette.";
+        : $"Refine only the masked center half of this enlarged fantasy landscape at depth {depth}. Treat the surrounding pixels as fixed context. Continue the same paths, water, stones, vegetation, light and object positions through the mask boundary, revealing fine details within the enlarged pixels. Match the existing top-down illustrated game-map style, inked contours and palette. Keep natural contours irregular; avoid photographic blur. Do not introduce a new composition, frame, border, square patch, panel, text or vignette.";
+
+    private static SKBitmap ComposeInnerDetail(SKBitmap reference, SKBitmap generated)
+    {
+        var result = new SKBitmap(RenderSize, RenderSize);
+        using var referenceSmall = PngImages.Resize(reference, 64, SKFilterMode.Linear);
+        using var generatedSmall = PngImages.Resize(generated, 64, SKFilterMode.Linear);
+        using var referenceLow = PngImages.Resize(referenceSmall, RenderSize, SKFilterMode.Linear);
+        using var generatedLow = PngImages.Resize(generatedSmall, RenderSize, SKFilterMode.Linear);
+        var inset = (RenderSize - InnerDetailSize) / 2;
+        var last = inset + InnerDetailSize - 1;
+        const float feather = 16f;
+        for (var y = 0; y < RenderSize; y++)
+        {
+            for (var x = 0; x < RenderSize; x++)
+            {
+                var source = reference.GetPixel(x, y);
+                var edge = Math.Min(Math.Min(x - inset, last - x), Math.Min(y - inset, last - y));
+                if (edge < 0)
+                {
+                    result.SetPixel(x, y, source);
+                    continue;
+                }
+                var weight = Math.Clamp((edge + 1f) / feather, 0f, 1f);
+                var detail = generated.GetPixel(x, y);
+                var sourceLow = referenceLow.GetPixel(x, y);
+                var detailLow = generatedLow.GetPixel(x, y);
+                result.SetPixel(x, y, new SKColor(
+                    Lerp(source.Red, Correct(detail.Red, detailLow.Red, sourceLow.Red), weight),
+                    Lerp(source.Green, Correct(detail.Green, detailLow.Green, sourceLow.Green), weight),
+                    Lerp(source.Blue, Correct(detail.Blue, detailLow.Blue, sourceLow.Blue), weight),
+                    Lerp(source.Alpha, detail.Alpha, weight)));
+            }
+        }
+        return result;
+
+        static byte Lerp(byte a, byte b, float t) =>
+            (byte)Math.Clamp((int)MathF.Round(a + (b - a) * t), 0, 255);
+
+        static byte Correct(byte detail, byte detailLow, byte sourceLow) =>
+            (byte)Math.Clamp((int)MathF.Round(detail + 0.5f * (sourceLow - detailLow)), 0, 255);
+    }
 
     private static int FrameSeed(int seed, int depth)
     {
