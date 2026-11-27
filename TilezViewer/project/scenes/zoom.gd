@@ -48,7 +48,7 @@ func _ready() -> void:
 			if quality.is_empty():
 				quality = "medium"
 			var identity := (model + "|" + quality).sha256_text().substr(0, 12)
-			cache_name = ("center-zoom-openai-v2-" if image_backend == "openai-zoom" else "center-zoom-openrouter-v2-") + identity
+			cache_name = ("center-zoom-openai-v3-" if image_backend == "openai-zoom" else "center-zoom-openrouter-v3-") + identity
 		output_root = custom_root.path_join(cache_name) if not custom_root.is_empty() else ProjectSettings.globalize_path("res://../../generated/" + cache_name)
 	if OS.has_environment("TILEZ_ZOOM_MAX_DEPTH"):
 		max_depth = int(OS.get_environment("TILEZ_ZOOM_MAX_DEPTH"))

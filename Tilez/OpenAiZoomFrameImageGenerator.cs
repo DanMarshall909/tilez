@@ -11,7 +11,7 @@ public sealed class OpenAiZoomFrameImageGenerator : IZoomFrameImageGenerator
 {
     private readonly OpenAiZoomImageOptions _options;
     private readonly HttpClient _client;
-    public string CacheIdentity => $"openai-zoom|{_options.Model}|{_options.Quality}|nested-v2|1024";
+    public string CacheIdentity => $"openai-zoom|{_options.Model}|{_options.Quality}|nested-v3|1024";
 
     public OpenAiZoomFrameImageGenerator(OpenAiZoomImageOptions options, HttpClient? client = null)
     {

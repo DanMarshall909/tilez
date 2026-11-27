@@ -14,7 +14,7 @@ func _run() -> void:
 	root.add_child(scene)
 	await process_frame
 	var identity := "gpt-image-2.5-sunburst|medium".sha256_text().substr(0, 12)
-	var expected_root := custom_root.path_join("center-zoom-openai-v2-" + identity)
+	var expected_root := custom_root.path_join("center-zoom-openai-v3-" + identity)
 	if scene.output_root != expected_root:
 		push_error("OpenAI zoom reused the local model cache")
 		quit(1)
@@ -64,7 +64,7 @@ func _run() -> void:
 	root.add_child(routed)
 	await process_frame
 	var routed_identity := "openai/gpt-image-2.6-sunburst|medium".sha256_text().substr(0, 12)
-	var routed_root := custom_root.path_join("center-zoom-openrouter-v2-" + routed_identity)
+	var routed_root := custom_root.path_join("center-zoom-openrouter-v3-" + routed_identity)
 	if routed.output_root != routed_root or routed.build_generation_arguments(0).find("openrouter-zoom") < 0:
 		push_error("OpenRouter-routed OpenAI frames mixed with direct OpenAI frames")
 		quit(1)

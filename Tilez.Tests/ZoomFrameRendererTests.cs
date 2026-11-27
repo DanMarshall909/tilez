@@ -12,15 +12,48 @@ public sealed class ZoomFrameRendererTests
         var first = new RecordingZoomBackend(size: 1024);
         var second = new RecordingZoomBackend(size: 1024);
         var firstRenderer = new ZoomFrameRenderer(first, 1024, ZoomCompositionMode.NestedScene,
-            "openrouter-zoom|openai/gpt-image-2.6-sunburst|medium|nested-v2|1024");
+            "openrouter-zoom|openai/gpt-image-2.6-sunburst|medium|nested-v3|1024");
         var secondRenderer = new ZoomFrameRenderer(second, 1024, ZoomCompositionMode.NestedScene,
-            "openai-zoom|gpt-image-2.6-sunburst|medium|nested-v2|1024");
+            "openai-zoom|gpt-image-2.6-sunburst|medium|nested-v3|1024");
 
         firstRenderer.Render(0, 1337, temp.Path);
 
         Assert.Throws<InvalidOperationException>(() => secondRenderer.Render(0, 1337, temp.Path));
         Assert.Empty(second.Requests);
         Assert.Single(first.Requests);
+    }
+
+    [Fact]
+    public void Local_renderer_cannot_replace_a_paid_frame_in_the_same_output_directory()
+    {
+        using var temp = new ZoomDirectory();
+        var paid = new ZoomFrameRenderer(new RecordingZoomBackend(size: 1024), 1024,
+            ZoomCompositionMode.NestedScene, "openrouter-zoom|model|medium|nested-v3|1024");
+        var frame = paid.Render(0, 1337, temp.Path);
+        var accepted = File.ReadAllBytes(frame);
+        var local = new RecordingZoomBackend();
+
+        Assert.Throws<InvalidOperationException>(() => new ZoomFrameRenderer(local).Render(0, 1337, temp.Path));
+
+        Assert.Equal(accepted, File.ReadAllBytes(frame));
+        Assert.Empty(local.Requests);
+    }
+
+    [Fact]
+    public void Marked_paid_sequence_can_continue_after_loading_existing_frames()
+    {
+        using var temp = new ZoomDirectory();
+        const string identity = "openrouter-zoom|model|medium|nested-v3|1024";
+        using var existing = new SKBitmap(1024, 1024);
+        Save(existing, ZoomFrameRenderer.FramePath(temp.Path, 1337, 0));
+        File.WriteAllText(Path.Combine(temp.Path, ".zoom-cache-identity"), identity);
+        var backend = new RecordingZoomBackend(size: 1024);
+
+        new ZoomFrameRenderer(backend, 1024, ZoomCompositionMode.NestedScene, identity)
+            .Render(1, 1337, temp.Path);
+
+        Assert.Single(backend.Requests);
+        Assert.NotNull(backend.Requests[0].ReferencePng);
     }
 
     [Fact]

@@ -204,9 +204,14 @@ public sealed class ZoomFrameRenderer(
 
     private static void EnsureCacheIdentity(string root, string? identity)
     {
-        if (identity is null) return;
         using var identityLock = AcquireLock(Path.Combine(root, ".zoom-cache-identity.lock"));
         var marker = Path.Combine(root, ".zoom-cache-identity");
+        if (identity is null)
+        {
+            if (File.Exists(marker))
+                throw new InvalidOperationException("This zoom output directory belongs to a paid image backend.");
+            return;
+        }
         if (File.Exists(marker))
         {
             if (File.ReadAllText(marker) != identity)
