@@ -5,6 +5,7 @@ const REGION_SIZE := 3
 const WORLD_SEED := 1337
 const HIGH_DETAIL_ZOOM := 2.5
 const DEFAULT_OPENROUTER_MODEL := "black-forest-labs/flux.2-klein-4b"
+const DEFAULT_LOCAL_MODEL := "flux-2-klein-4b-fp8.safetensors"
 
 var camera: Camera2D
 var label: Label
@@ -43,13 +44,15 @@ func _ready() -> void:
 		image_backend = "openrouter"
 	if image_backend == "ai":
 		image_backend = "openai"
-	if image_backend not in ["openrouter", "openai", "procedural"]:
+	if image_backend not in ["openrouter", "comfyui", "openai", "procedural"]:
 		label.text = "Unsupported image backend: " + image_backend
 		return
 	image_model = OS.get_environment("TILEZ_AI_MODEL")
 	if image_model.is_empty():
 		if image_backend == "openrouter":
 			image_model = DEFAULT_OPENROUTER_MODEL
+		elif image_backend == "comfyui":
+			image_model = DEFAULT_LOCAL_MODEL
 		elif image_backend == "openai":
 			image_model = "flux"
 	var configured_limit := OS.get_environment("TILEZ_MAX_RENDER_JOBS").to_int()
@@ -58,9 +61,12 @@ func _ready() -> void:
 	dotnet_dll = ProjectSettings.globalize_path("res://../../Tilez/bin/Debug/net10.0/Tilez.dll").simplify_path()
 	var cache_name := image_backend
 	if image_backend != "procedural":
-		if image_backend == "openrouter":
-			cache_name += "-regions-v1"
-		cache_name += "-" + image_model.sha256_text().substr(0, 12)
+		if uses_regions():
+			cache_name += "-regions-v3" if image_backend == "comfyui" else "-regions-v2"
+		var model_identity := image_model
+		if image_backend == "comfyui":
+			model_identity += ":" + OS.get_environment("TILEZ_COMFYUI_TEXT_ENCODER") + ":" + OS.get_environment("TILEZ_COMFYUI_VAE") + ":" + OS.get_environment("TILEZ_LOCAL_CELL_SIZE")
+		cache_name += "-" + model_identity.sha256_text().substr(0, 12)
 	output_root = ProjectSettings.globalize_path("res://../../generated").simplify_path().path_join(cache_name)
 	image_directory = output_root.path_join("images")
 	if not FileAccess.file_exists(dotnet_dll):
@@ -137,7 +143,7 @@ func update_visible_tiles() -> void:
 				continue
 			if load_generated_tile(coord, detail):
 				continue
-			if image_backend == "openrouter":
+			if uses_regions():
 				var region := Vector2i(floori(float(x) / REGION_SIZE), floori(float(y) / REGION_SIZE))
 				var region_key := "region:%d:%d" % [region.x, region.y]
 				if queued.has(region_key) or failed.has(region_key):
@@ -148,7 +154,7 @@ func update_visible_tiles() -> void:
 			queued[key] = true
 			pending.append(Vector3i(x, y, detail))
 	pending.sort_custom(func(a: Vector3i, b: Vector3i) -> bool:
-		if image_backend == "openrouter":
+		if uses_regions():
 			var a_center := Vector2(a.x * REGION_SIZE + 1.5, a.y * REGION_SIZE + 1.5)
 			var b_center := Vector2(b.x * REGION_SIZE + 1.5, b.y * REGION_SIZE + 1.5)
 			return a_center.distance_squared_to(center) < b_center.distance_squared_to(center)
@@ -170,12 +176,15 @@ func ensure_placeholder(coord: Vector2i) -> void:
 func tile_key(coord: Vector2i, detail: int) -> String:
 	return "%d:%d:%d" % [coord.x, coord.y, detail]
 
+func uses_regions() -> bool:
+	return image_backend in ["openrouter", "comfyui"]
+
 func region_marker_path(coord: Vector2i) -> String:
 	var region := Vector2i(floori(float(coord.x) / REGION_SIZE), floori(float(coord.y) / REGION_SIZE))
 	return output_root.path_join("regions/region_%d_%d_%d.complete" % [region.x, region.y, WORLD_SEED])
 
 func artifact_path(coord: Vector2i, detail: int) -> String:
-	if detail == 1 and (image_backend != "openrouter" or FileAccess.file_exists(region_marker_path(coord))):
+	if detail == 1 and (not uses_regions() or FileAccess.file_exists(region_marker_path(coord))):
 		return image_directory.path_join("tile_%d_%d_%d_high_256.png" % [coord.x, coord.y, WORLD_SEED])
 	return image_directory.path_join("tile_%d_%d_%d_base_64_upscaled_128.png" % [coord.x, coord.y, WORLD_SEED])
 
@@ -197,7 +206,7 @@ func load_generated_tile(coord: Vector2i, detail: int, display: bool = true) -> 
 func start_next_job() -> void:
 	if worker_busy or pending.is_empty():
 		return
-	if image_backend == "openrouter" and jobs_started >= job_limit:
+	if uses_regions() and jobs_started >= job_limit:
 		label.text = "%d render jobs started. Press R for another batch, or raise TILEZ_MAX_RENDER_JOBS." % job_limit
 		return
 	var job: Vector3i = pending.pop_front()
@@ -208,7 +217,7 @@ func start_next_job() -> void:
 		start_next_job()
 		return
 	worker_busy = true
-	if image_backend == "openrouter":
+	if uses_regions():
 		jobs_started += 1
 	label.text = "Expanding region (%d, %d)…" % [coord.x, coord.y] if job.z == -1 else "Generating tile (%d, %d)…  Arrows: pan, +/-: zoom, R: retry" % [coord.x, coord.y]
 	worker_task_id = WorkerThreadPool.add_task(render_tile.bind(job))

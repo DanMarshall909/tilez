@@ -55,13 +55,18 @@ public sealed class RegionRendererTests
         Assert.Single(backend.Requests);
         Assert.Equal("4:3", backend.Requests[0].AspectRatio);
         using var reference = SKBitmap.Decode(backend.Requests[0].ReferencePng);
+        using var mask = SKBitmap.Decode(backend.Requests[0].MaskPng);
         Assert.NotNull(reference);
+        Assert.NotNull(mask);
         Assert.Equal(SKColors.Red, reference.GetPixel(128, 128));
+        Assert.Equal(SKColors.Black, mask.GetPixel(128, 128));
+        Assert.Equal(SKColors.White, mask.GetPixel(384, 128));
         Assert.Equal(oldBytes, File.ReadAllBytes(RegionRenderer.TilePath(root, 2, 0, 1337, 128)));
         Assert.True(File.Exists(RegionRenderer.TilePath(root, 3, 0, 1337, 128)));
         using var newTile = SKBitmap.Decode(RegionRenderer.TilePath(root, 3, 0, 1337, 256));
         Assert.NotNull(newTile);
         Assert.Equal(SKColors.Red, newTile.GetPixel(0, 128));
+        Assert.Equal(SKColors.Blue, newTile.GetPixel(16, 128));
         Assert.Equal(SKColors.Blue, newTile.GetPixel(128, 128));
     }
 
@@ -163,6 +168,40 @@ public sealed class RegionRendererTests
         }
     }
 
+    [Fact]
+    public void A_model_drawn_outer_frame_is_removed_before_tiles_are_accepted()
+    {
+        using var temp = new TempRegion();
+        new RegionRenderer(new FramedRegionBackend()).Render(0, 0, 1337, temp.Path);
+
+        using var topLeft = SKBitmap.Decode(RegionRenderer.TilePath(temp.Path, 0, 0, 1337, 256));
+        using var bottomRight = SKBitmap.Decode(RegionRenderer.TilePath(temp.Path, 2, 2, 1337, 256));
+        Assert.NotNull(topLeft);
+        Assert.NotNull(bottomRight);
+        Assert.Equal(SKColors.Blue, topLeft.GetPixel(0, 0));
+        Assert.Equal(SKColors.Blue, bottomRight.GetPixel(255, 255));
+    }
+
+    [Fact]
+    public void Local_resolution_scales_the_model_request_and_spatial_reference()
+    {
+        using var temp = new TempRegion();
+        var backend = new RecordingRegionBackend(SKColors.Blue);
+        var renderer = new RegionRenderer(backend, 192);
+
+        renderer.Render(0, 0, 1337, temp.Path);
+        renderer.Render(1, 0, 1337, temp.Path);
+
+        Assert.Equal(2, backend.Requests.Count);
+        Assert.All(backend.Requests, request => Assert.Equal(192, request.CellSize));
+        using var reference = SKBitmap.Decode(backend.Requests[1].ReferencePng);
+        using var mask = SKBitmap.Decode(backend.Requests[1].MaskPng);
+        Assert.NotNull(reference);
+        Assert.NotNull(mask);
+        Assert.Equal((768, 576), (reference.Width, reference.Height));
+        Assert.Equal((768, 576), (mask.Width, mask.Height));
+    }
+
     private sealed class FailingRegionBackend : IRegionImageGenerator
     {
         public byte[] Generate(RegionImageRequest request) => throw new InvalidOperationException("request failed");
@@ -205,6 +244,22 @@ public sealed class RegionRendererTests
             Thread.Sleep(100);
             using var bitmap = new SKBitmap(900, 900);
             bitmap.Erase(SKColors.Blue);
+            using var stream = new MemoryStream();
+            if (!bitmap.Encode(stream, SKEncodedImageFormat.Png, 100))
+                throw new InvalidOperationException("Could not encode test image.");
+            return stream.ToArray();
+        }
+    }
+
+    private sealed class FramedRegionBackend : IRegionImageGenerator
+    {
+        public byte[] Generate(RegionImageRequest request)
+        {
+            using var bitmap = new SKBitmap(900, 900);
+            bitmap.Erase(SKColors.Black);
+            using (var canvas = new SKCanvas(bitmap))
+            using (var paint = new SKPaint { Color = SKColors.Blue })
+                canvas.DrawRect(new SKRect(12, 12, 888, 888), paint);
             using var stream = new MemoryStream();
             if (!bitmap.Encode(stream, SKEncodedImageFormat.Png, 100))
                 throw new InvalidOperationException("Could not encode test image.");

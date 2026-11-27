@@ -172,7 +172,11 @@ try
             var regionX = GetInt(args, "--region-x", 0);
             var regionY = GetInt(args, "--region-y", 0);
             var seed = GetInt(args, "--seed", 1337);
-            new RegionRenderer(regionBackend).Render(regionX, regionY, seed, outputRoot);
+            var configuredCellSize = int.TryParse(Environment.GetEnvironmentVariable("TILEZ_LOCAL_CELL_SIZE"), out var size)
+                ? size : 192;
+            var cellSize = imageGenerator is ComfyUiTileImageGenerator
+                ? GetInt(args, "--region-cell-size", configuredCellSize) : 256;
+            new RegionRenderer(regionBackend, cellSize).Render(regionX, regionY, seed, outputRoot);
             Console.WriteLine($"Region ({regionX}, {regionY}) ready: {RegionRenderer.MarkerPath(outputRoot, regionX, regionY, seed)}");
             break;
         }
@@ -305,6 +309,23 @@ static ITileImageGenerator BuildImageGenerator(string[] args)
 
         Log.Information("OpenRouter image model: {Model}", model);
         return new OpenRouterTileImageGenerator(new OpenRouterImageOptions(model, key));
+    }
+
+    if (backend == "comfyui")
+    {
+        var baseUrl = GetString(args, "--ai-base-url")
+            ?? Environment.GetEnvironmentVariable("TILEZ_COMFYUI_URL")
+            ?? "http://127.0.0.1:8188/";
+        var model = GetString(args, "--ai-model")
+            ?? Environment.GetEnvironmentVariable("TILEZ_AI_MODEL")
+            ?? "flux-2-klein-4b-fp8.safetensors";
+        var textEncoder = Environment.GetEnvironmentVariable("TILEZ_COMFYUI_TEXT_ENCODER")
+            ?? "qwen_3_4b.safetensors";
+        var vae = Environment.GetEnvironmentVariable("TILEZ_COMFYUI_VAE")
+            ?? "flux2-vae.safetensors";
+        Log.Information("Local ComfyUI image model: {Model}", model);
+        return new ComfyUiTileImageGenerator(new ComfyUiImageOptions(
+            new Uri(baseUrl), model, textEncoder, vae));
     }
 
     if (backend is "openai" or "ai")

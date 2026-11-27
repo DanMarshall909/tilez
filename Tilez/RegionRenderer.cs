@@ -3,17 +3,18 @@ using SkiaSharp;
 
 namespace Tilez;
 
-public sealed record RegionImageRequest(string Prompt, int Seed, string AspectRatio, byte[]? ReferencePng);
+public sealed record RegionImageRequest(string Prompt, int Seed, string AspectRatio, byte[]? ReferencePng,
+    byte[]? MaskPng = null, int CellSize = 256);
 
 public interface IRegionImageGenerator
 {
     byte[] Generate(RegionImageRequest request);
 }
 
-public sealed class RegionRenderer(IRegionImageGenerator backend)
+public sealed class RegionRenderer(IRegionImageGenerator backend, int cellSize = 256)
 {
     private const int RegionSize = 3;
-    private const int ReferenceCellSize = 256;
+    private const int SeamFeatherWidth = 8;
 
     public static string TilePath(string root, int x, int y, int seed, int size)
     {
@@ -32,6 +33,8 @@ public sealed class RegionRenderer(IRegionImageGenerator backend)
 
     public void Render(int regionX, int regionY, int seed, string outputRoot)
     {
+        if (cellSize < 128 || cellSize > 256 || cellSize % 16 != 0)
+            throw new ArgumentOutOfRangeException(nameof(cellSize), "Region source cells must be 128–256 pixels in 16 pixel steps.");
         var originX = checked(regionX * RegionSize);
         var originY = checked(regionY * RegionSize);
         var marker = MarkerPath(outputRoot, regionX, regionY, seed);
@@ -59,11 +62,12 @@ public sealed class RegionRenderer(IRegionImageGenerator backend)
         if (missing.Count > 0)
         {
             var layout = SelectLayout(originX, originY, seed, outputRoot);
-            var reference = CreateReference(layout, seed, outputRoot);
+            var (reference, mask) = CreateReference(layout, seed, outputRoot, cellSize);
             var prompt = reference is null
                 ? "One continuous top-down illustrated fantasy world map, coherent terrain, roads and structures across the entire image. No borders, grid lines, labels or separate panels."
                 : "Outpaint the pale blank area of this top-down illustrated world map. Extend the existing roads, structures, terrain, palette and lighting naturally into the blank area. Keep the existing artwork in its exact position. One continuous scene, no borders, grid lines, labels or separate panels.";
-            var bytes = backend.Generate(new RegionImageRequest(prompt, RegionSeed(seed, regionX, regionY), layout.AspectRatio, reference));
+            var bytes = backend.Generate(new RegionImageRequest(prompt, RegionSeed(seed, regionX, regionY),
+                layout.AspectRatio, reference, mask, cellSize));
             using var generated = PngImages.Decode(bytes);
             if (generated.Width < layout.Columns * 64 || generated.Height < layout.Rows * 64)
                 throw new InvalidDataException("Region image is too small to split into tiles.");
@@ -73,6 +77,10 @@ public sealed class RegionRenderer(IRegionImageGenerator backend)
                 throw new InvalidDataException("Region image has the wrong aspect ratio.");
 
             Directory.CreateDirectory(Path.Combine(outputRoot, "images"));
+            var marginX = generated.Width * 0.02f;
+            var marginY = generated.Height * 0.02f;
+            var innerWidth = generated.Width - 2 * marginX;
+            var innerHeight = generated.Height - 2 * marginY;
             foreach (var (x, y) in missing)
             {
                 var column = x - layout.OriginX;
@@ -81,10 +89,10 @@ public sealed class RegionRenderer(IRegionImageGenerator backend)
                 using (var canvas = new SKCanvas(tile))
                 {
                     var source = new SKRect(
-                        generated.Width * column / (float)layout.Columns,
-                        generated.Height * row / (float)layout.Rows,
-                        generated.Width * (column + 1) / (float)layout.Columns,
-                        generated.Height * (row + 1) / (float)layout.Rows);
+                        marginX + innerWidth * column / layout.Columns,
+                        marginY + innerHeight * row / layout.Rows,
+                        marginX + innerWidth * (column + 1) / layout.Columns,
+                        marginY + innerHeight * (row + 1) / layout.Rows);
                     canvas.DrawBitmap(generated, source, new SKRect(0, 0, 256, 256),
                         new SKSamplingOptions(SKFilterMode.Linear));
                 }
@@ -111,7 +119,7 @@ public sealed class RegionRenderer(IRegionImageGenerator backend)
                 PngImages.Save(resized, high);
             }
             Directory.CreateDirectory(Path.GetDirectoryName(marker)!);
-            File.WriteAllText(marker, "region-v1");
+            File.WriteAllText(marker, "region-v2");
         }
     }
 
@@ -142,12 +150,16 @@ public sealed class RegionRenderer(IRegionImageGenerator backend)
         return new(x, y, 3, 3);
     }
 
-    private static byte[]? CreateReference(Layout layout, int seed, string root)
+    private static (byte[]? Image, byte[]? Mask) CreateReference(Layout layout, int seed, string root, int cellSize)
     {
-        using var canvasImage = new SKBitmap(layout.Columns * ReferenceCellSize, layout.Rows * ReferenceCellSize);
+        using var canvasImage = new SKBitmap(layout.Columns * cellSize, layout.Rows * cellSize);
+        using var maskImage = new SKBitmap(layout.Columns * cellSize, layout.Rows * cellSize);
         canvasImage.Erase(new SKColor(238, 238, 238));
+        maskImage.Erase(SKColors.White);
         var found = false;
         using (var canvas = new SKCanvas(canvasImage))
+        using (var maskCanvas = new SKCanvas(maskImage))
+        using (var maskPaint = new SKPaint { Color = SKColors.Black })
         {
             for (var column = 0; column < layout.Columns; column++)
             for (var row = 0; row < layout.Rows; row++)
@@ -156,16 +168,20 @@ public sealed class RegionRenderer(IRegionImageGenerator backend)
                 if (!IsAccepted(path)) continue;
                 using var old = PngImages.Decode(path);
                 canvas.DrawBitmap(old,
-                    new SKRect(column * ReferenceCellSize, row * ReferenceCellSize,
-                        (column + 1) * ReferenceCellSize, (row + 1) * ReferenceCellSize),
+                    new SKRect(column * cellSize, row * cellSize,
+                        (column + 1) * cellSize, (row + 1) * cellSize),
                     new SKSamplingOptions(SKFilterMode.Linear));
+                maskCanvas.DrawRect(new SKRect(column * cellSize, row * cellSize,
+                    (column + 1) * cellSize, (row + 1) * cellSize), maskPaint);
                 found = true;
             }
         }
-        if (!found) return null;
+        if (!found) return (null, null);
         using var data = canvasImage.Encode(SKEncodedImageFormat.Png, 100)
             ?? throw new InvalidOperationException("Could not encode the region reference.");
-        return data.ToArray();
+        using var maskData = maskImage.Encode(SKEncodedImageFormat.Png, 100)
+            ?? throw new InvalidOperationException("Could not encode the region mask.");
+        return (data.ToArray(), maskData.ToArray());
     }
 
     private static void SaveNew(SKBitmap image, string path)
@@ -221,7 +237,7 @@ public sealed class RegionRenderer(IRegionImageGenerator backend)
             var neighbor = scaled ?? accepted;
             for (var line = 0; line < 256; line++)
             {
-                for (var distance = 0; distance < 64; distance++)
+                for (var distance = 0; distance < SeamFeatherWidth; distance++)
                 {
                     var position = side switch
                     {
@@ -232,13 +248,13 @@ public sealed class RegionRenderer(IRegionImageGenerator backend)
                     };
                     var from = side switch
                     {
-                        0 => neighbor.GetPixel(255 - distance, line),
-                        1 => neighbor.GetPixel(distance, line),
-                        2 => neighbor.GetPixel(line, 255 - distance),
-                        _ => neighbor.GetPixel(line, distance)
+                        0 => neighbor.GetPixel(255, line),
+                        1 => neighbor.GetPixel(0, line),
+                        2 => neighbor.GetPixel(line, 255),
+                        _ => neighbor.GetPixel(line, 0)
                     };
                     var color = tile.GetPixel(position.Item1, position.Item2);
-                    var weight = 1f - distance / 64f;
+                    var weight = 1f - distance / (float)SeamFeatherWidth;
                     tile.SetPixel(position.Item1, position.Item2, new SKColor(
                         Blend(color.Red, from.Red, weight),
                         Blend(color.Green, from.Green, weight),
