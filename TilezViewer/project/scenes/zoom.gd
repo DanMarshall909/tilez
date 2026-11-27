@@ -94,7 +94,7 @@ func _update_display() -> void:
 		incoming_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 
 func _frame_path(depth: int) -> String:
-	return output_root.path_join("frames").path_join("frame_%04d.png" % depth)
+	return output_root.path_join("seed_%d" % world_seed).path_join("frames").path_join("frame_%04d.png" % depth)
 
 func _load_cached_frame(depth: int) -> bool:
 	if frames.has(depth):
@@ -148,18 +148,19 @@ func _poll_generation() -> void:
 	_update_status()
 
 func update_generation_duration(duration: float) -> void:
-	seconds_per_zoom = clampf(duration * 1.15, 2.0, 15.0)
+	seconds_per_zoom = maxf(2.0, duration * 1.15)
 
 func _update_status() -> void:
 	if status_label == null:
 		return
-	if current_depth < 0:
+	var needed := 0 if current_depth < 0 else current_depth + 1
+	if active_depth < 0 and not frames.has(needed) and attempts.get(needed, 0) >= 3:
+		status_label.text = "Generation failed at depth %d · restart to retry" % needed
+	elif current_depth < 0:
 		status_label.text = "Generating first 512×512 frame…"
 	elif max_depth >= 0 and current_depth >= max_depth:
 		status_label.text = "Center zoom complete · depth %d" % current_depth
 	elif active_depth >= 0:
 		status_label.text = "Center zoom · depth %d · preparing frame %d" % [current_depth, active_depth]
-	elif attempts.get(current_depth + 1, 0) >= 3:
-		status_label.text = "Generation failed at depth %d · restart to retry" % (current_depth + 1)
 	else:
 		status_label.text = "Center zoom · depth %d · next frame ready" % current_depth

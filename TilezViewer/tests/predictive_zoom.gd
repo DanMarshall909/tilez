@@ -8,6 +8,13 @@ func _run() -> void:
 	scene.auto_generate = false
 	root.add_child(scene)
 	await process_frame
+	scene.attempts[0] = 3
+	scene._update_status()
+	if not scene.status_label.text.contains("failed at depth 0"):
+		push_error("Failure before the first frame was hidden")
+		quit(1)
+		return
+	scene.attempts.clear()
 	var image := Image.create(512, 512, false, Image.FORMAT_RGBA8)
 	image.fill(Color.RED)
 	scene.accept_frame(0, ImageTexture.create_from_image(image))
@@ -26,6 +33,11 @@ func _run() -> void:
 	scene.update_generation_duration(6.0)
 	if scene.seconds_per_zoom < 6.0:
 		push_error("Zoom ran ahead of generation time")
+		quit(1)
+		return
+	scene.update_generation_duration(30.0)
+	if scene.seconds_per_zoom < 30.0:
+		push_error("Slow generation outlasted the animation pace")
 		quit(1)
 		return
 	scene.seconds_per_zoom = 4.0

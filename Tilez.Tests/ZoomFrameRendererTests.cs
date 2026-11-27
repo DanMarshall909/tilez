@@ -17,11 +17,11 @@ public sealed class ZoomFrameRendererTests
         first.SetPixel(460, 51, SKColors.Green);
         first.SetPixel(51, 460, SKColors.Blue);
         first.SetPixel(460, 460, SKColors.Yellow);
-        Save(first, ZoomFrameRenderer.FramePath(temp.Path, 0));
+        Save(first, ZoomFrameRenderer.FramePath(temp.Path, 1337, 0));
 
         var nextPath = renderer.Render(1, 1337, temp.Path);
 
-        Assert.Equal(ZoomFrameRenderer.FramePath(temp.Path, 1), nextPath);
+        Assert.Equal(ZoomFrameRenderer.FramePath(temp.Path, 1337, 1), nextPath);
         Assert.Single(backend.Requests);
         Assert.Equal(512, backend.Requests[0].Size);
         Assert.Contains("center", backend.Requests[0].Prompt, StringComparison.OrdinalIgnoreCase);
@@ -63,11 +63,29 @@ public sealed class ZoomFrameRendererTests
         using var temp = new ZoomDirectory();
         var failing = new ZoomFrameRenderer(new RecordingZoomBackend(throwOnGenerate: true));
         Assert.Throws<InvalidOperationException>(() => failing.Render(0, 1337, temp.Path));
-        Assert.False(File.Exists(ZoomFrameRenderer.FramePath(temp.Path, 0)));
+        Assert.False(File.Exists(ZoomFrameRenderer.FramePath(temp.Path, 1337, 0)));
 
         var wrongSize = new ZoomFrameRenderer(new RecordingZoomBackend(size: 256));
         Assert.Throws<InvalidDataException>(() => wrongSize.Render(0, 1337, temp.Path));
-        Assert.False(File.Exists(ZoomFrameRenderer.FramePath(temp.Path, 0)));
+        Assert.False(File.Exists(ZoomFrameRenderer.FramePath(temp.Path, 1337, 0)));
+    }
+
+    [Fact]
+    public void Different_seeds_keep_separate_accepted_frame_sequences()
+    {
+        using var temp = new ZoomDirectory();
+        var backend = new RecordingZoomBackend();
+        var renderer = new ZoomFrameRenderer(backend);
+
+        var firstSeed = renderer.Render(0, 1337, temp.Path);
+        var secondSeed = renderer.Render(0, 2048, temp.Path);
+        renderer.Render(0, 1337, temp.Path);
+
+        Assert.NotEqual(firstSeed, secondSeed);
+        Assert.True(File.Exists(firstSeed));
+        Assert.True(File.Exists(secondSeed));
+        Assert.Equal(2, backend.Requests.Count);
+        Assert.NotEqual(backend.Requests[0].Seed, backend.Requests[1].Seed);
     }
 
     private static void Save(SKBitmap bitmap, string path)

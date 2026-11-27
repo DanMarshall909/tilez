@@ -15,15 +15,15 @@ public sealed class ZoomFrameRenderer(IZoomFrameImageGenerator backend)
     public const int DisplaySize = 256;
     public const int SourceCropSize = 410;
 
-    public static string FramePath(string root, int depth)
+    public static string FramePath(string root, int seed, int depth)
     {
         if (depth < 0) throw new ArgumentOutOfRangeException(nameof(depth));
-        return Path.Combine(root, "frames", $"frame_{depth:D4}.png");
+        return Path.Combine(root, $"seed_{seed}", "frames", $"frame_{depth:D4}.png");
     }
 
     public string Render(int depth, int seed, string outputRoot)
     {
-        var path = FramePath(outputRoot, depth);
+        var path = FramePath(outputRoot, seed, depth);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         using var frameLock = AcquireLock(path + ".lock");
         if (IsAccepted(path)) return path;
@@ -31,7 +31,7 @@ public sealed class ZoomFrameRenderer(IZoomFrameImageGenerator backend)
         byte[]? reference = null;
         if (depth > 0)
         {
-            var previousPath = FramePath(outputRoot, depth - 1);
+            var previousPath = FramePath(outputRoot, seed, depth - 1);
             if (!IsAccepted(previousPath))
                 throw new InvalidOperationException($"Frame {depth - 1} must be accepted before frame {depth}.");
             using var previous = PngImages.Decode(previousPath);
